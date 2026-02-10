@@ -1,0 +1,5 @@
+{
+  "id": "probe-pass",
+  "probeScore": 0.9,
+  "evidence": "fixtures/probe-pass.json"
+}
