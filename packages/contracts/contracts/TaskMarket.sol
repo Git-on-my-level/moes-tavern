@@ -37,6 +37,10 @@ interface IERC20Minimal {
     function transfer(address recipient, uint256 amount) external returns (bool);
 }
 
+interface IDisputeModule {
+    function openDispute(uint256 taskId, string calldata disputeURI) external;
+}
+
 contract TaskMarket {
     enum TaskStatus {
         OPEN,
@@ -46,6 +50,13 @@ contract TaskMarket {
         DISPUTED,
         SETTLED,
         CANCELLED
+    }
+
+    enum DisputeOutcome {
+        SELLER_WINS,
+        BUYER_WINS,
+        SPLIT,
+        CANCEL
     }
 
     struct Task {
@@ -90,11 +101,14 @@ contract TaskMarket {
     event DeliverableSubmitted(uint256 indexed taskId, string artifactURI, bytes32 artifactHash);
     event SubmissionAccepted(uint256 indexed taskId);
     event SubmissionDisputed(uint256 indexed taskId, string disputeURI);
+    event SellerBondFunded(uint256 indexed taskId, uint256 amount);
     event TaskSettled(uint256 indexed taskId, uint256 buyerPayout, uint256 sellerBondRefund);
     event TaskCancelled(uint256 indexed taskId);
 
     IListingRegistry public immutable listingRegistry;
     IAgentIdentityRegistry public immutable identityRegistry;
+    address public disputeModule;
+    address public owner;
 
     uint256 private _nextTaskId = 1;
     mapping(uint256 => Task) private _tasks;
@@ -106,6 +120,31 @@ contract TaskMarket {
         }
         listingRegistry = IListingRegistry(listingRegistry_);
         identityRegistry = IAgentIdentityRegistry(identityRegistry_);
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) {
+            revert("TaskMarket: owner only");
+        }
+        _;
+    }
+
+    modifier onlyDisputeModule() {
+        if (msg.sender != disputeModule) {
+            revert("TaskMarket: dispute module only");
+        }
+        _;
+    }
+
+    function setDisputeModule(address disputeModule_) external onlyOwner {
+        if (disputeModule_ == address(0)) {
+            revert("TaskMarket: zero dispute module");
+        }
+        if (disputeModule != address(0)) {
+            revert("TaskMarket: dispute module already set");
+        }
+        disputeModule = disputeModule_;
     }
 
     function postTask(uint256 listingId, string calldata taskURI, uint32 proposedUnits) external returns (uint256 taskId) {
@@ -177,9 +216,36 @@ contract TaskMarket {
         if (task.fundedAmount == 0 || task.fundedAmount != task.quotedTotalPrice) {
             revert("TaskMarket: not funded");
         }
+        if (_requiredSellerBond(task) != 0 && task.sellerBond != _requiredSellerBond(task)) {
+            revert("TaskMarket: bond not funded");
+        }
         task.status = TaskStatus.ACTIVE;
 
         emit QuoteAccepted(taskId);
+    }
+
+    function fundSellerBond(uint256 taskId, uint256 amount) external {
+        Task storage task = _getTaskOrRevert(taskId);
+        if (task.status != TaskStatus.QUOTED) {
+            revert("TaskMarket: not quoted");
+        }
+        _requireAgentAuthorized(task.agentId);
+        uint256 requiredBond = _requiredSellerBond(task);
+        if (requiredBond == 0) {
+            revert("TaskMarket: bond disabled");
+        }
+        if (task.sellerBond != 0) {
+            revert("TaskMarket: bond already funded");
+        }
+        if (amount != requiredBond) {
+            revert("TaskMarket: bond amount mismatch");
+        }
+        task.sellerBond = amount;
+        if (!IERC20Minimal(task.paymentToken).transferFrom(msg.sender, address(this), amount)) {
+            revert("TaskMarket: bond transfer failed");
+        }
+
+        emit SellerBondFunded(taskId, amount);
     }
 
     function fundTask(uint256 taskId, uint256 amount) external {
@@ -264,6 +330,9 @@ contract TaskMarket {
     }
 
     function disputeSubmission(uint256 taskId, string calldata disputeURI) external {
+        if (disputeModule == address(0)) {
+            revert("TaskMarket: dispute module unset");
+        }
         Task storage task = _getTaskOrRevert(taskId);
         if (task.status != TaskStatus.SUBMITTED) {
             revert("TaskMarket: not submitted");
@@ -271,9 +340,7 @@ contract TaskMarket {
         if (task.buyer != msg.sender) {
             revert("TaskMarket: buyer only");
         }
-        task.status = TaskStatus.DISPUTED;
-
-        emit SubmissionDisputed(taskId, disputeURI);
+        IDisputeModule(disputeModule).openDispute(taskId, disputeURI);
     }
 
     function settleAfterTimeout(uint256 taskId) external {
@@ -289,6 +356,44 @@ contract TaskMarket {
         _settle(task);
     }
 
+    function markDisputed(uint256 taskId, string calldata disputeURI) external onlyDisputeModule {
+        Task storage task = _getTaskOrRevert(taskId);
+        if (task.status != TaskStatus.SUBMITTED) {
+            revert("TaskMarket: not submitted");
+        }
+        task.status = TaskStatus.DISPUTED;
+        emit SubmissionDisputed(taskId, disputeURI);
+    }
+
+    function resolveDispute(
+        uint256 taskId,
+        DisputeOutcome outcome,
+        string calldata
+    ) external onlyDisputeModule {
+        Task storage task = _getTaskOrRevert(taskId);
+        if (task.status != TaskStatus.DISPUTED) {
+            revert("TaskMarket: not disputed");
+        }
+
+        uint256 buyerEscrowPayout;
+        uint256 buyerBondPayout;
+        if (outcome == DisputeOutcome.SELLER_WINS) {
+            buyerEscrowPayout = 0;
+            buyerBondPayout = 0;
+        } else if (outcome == DisputeOutcome.BUYER_WINS) {
+            buyerEscrowPayout = task.fundedAmount;
+            buyerBondPayout = task.sellerBond;
+        } else if (outcome == DisputeOutcome.SPLIT) {
+            buyerEscrowPayout = task.fundedAmount / 2;
+            buyerBondPayout = 0;
+        } else {
+            buyerEscrowPayout = task.fundedAmount;
+            buyerBondPayout = 0;
+        }
+
+        _settleWithPayouts(task, buyerEscrowPayout, buyerBondPayout);
+    }
+
     function cancelTask(uint256 taskId) external {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.buyer != msg.sender) {
@@ -301,6 +406,13 @@ contract TaskMarket {
             revert("TaskMarket: funded");
         }
         task.status = TaskStatus.CANCELLED;
+        if (task.sellerBond != 0) {
+            uint256 refund = task.sellerBond;
+            task.sellerBond = 0;
+            if (!IERC20Minimal(task.paymentToken).transfer(_agentOwner(task.agentId), refund)) {
+                revert("TaskMarket: bond refund failed");
+            }
+        }
 
         emit TaskCancelled(taskId);
     }
@@ -310,20 +422,39 @@ contract TaskMarket {
     }
 
     function _settle(Task storage task) internal {
+        _settleWithPayouts(task, 0, 0);
+    }
+
+    function _settleWithPayouts(Task storage task, uint256 buyerEscrowPayout, uint256 buyerBondPayout) internal {
         if (task.settled) {
             revert("TaskMarket: already settled");
+        }
+        if (buyerEscrowPayout > task.fundedAmount) {
+            revert("TaskMarket: buyer payout exceeds escrow");
+        }
+        if (buyerBondPayout > task.sellerBond) {
+            revert("TaskMarket: buyer payout exceeds bond");
         }
         task.settled = true;
         task.status = TaskStatus.SETTLED;
 
-        uint256 payout = task.fundedAmount;
-        if (payout > 0) {
-            if (!IERC20Minimal(task.paymentToken).transfer(_agentOwner(task.agentId), payout)) {
+        uint256 sellerEscrowPayout = task.fundedAmount - buyerEscrowPayout;
+        uint256 sellerBondRefund = task.sellerBond - buyerBondPayout;
+        uint256 buyerTotal = buyerEscrowPayout + buyerBondPayout;
+        uint256 sellerTotal = sellerEscrowPayout + sellerBondRefund;
+
+        if (buyerTotal > 0) {
+            if (!IERC20Minimal(task.paymentToken).transfer(task.buyer, buyerTotal)) {
+                revert("TaskMarket: buyer payout failed");
+            }
+        }
+        if (sellerTotal > 0) {
+            if (!IERC20Minimal(task.paymentToken).transfer(_agentOwner(task.agentId), sellerTotal)) {
                 revert("TaskMarket: payout failed");
             }
         }
 
-        emit TaskSettled(task.id, payout, 0);
+        emit TaskSettled(task.id, buyerTotal, sellerBondRefund);
     }
 
     function _getTaskOrRevert(uint256 taskId) internal view returns (Task storage task) {
@@ -346,5 +477,13 @@ contract TaskMarket {
 
     function _agentOwner(uint256 agentId) internal view returns (address) {
         return identityRegistry.ownerOf(agentId);
+    }
+
+    function _requiredSellerBond(Task storage task) internal view returns (uint256) {
+        (, , , IListingRegistry.Policy memory policy, ) = listingRegistry.getListing(task.listingId);
+        if (policy.sellerBondBps == 0) {
+            return 0;
+        }
+        return (task.quotedTotalPrice * uint256(policy.sellerBondBps)) / 10_000;
     }
 }
