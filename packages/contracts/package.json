@@ -2,6 +2,7 @@
   "name": "@moes/contracts",
   "private": true,
   "scripts": {
+    "demo:smoke": "hardhat run scripts/demo_smoke.ts",
     "test": "hardhat test"
   },
   "devDependencies": {
