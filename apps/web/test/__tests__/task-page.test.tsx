@@ -79,7 +79,7 @@ describe('TaskPage', () => {
     render(<TaskPage params={{ id: '1' }} />);
 
     expect(await screen.findByText(/Task #1/i)).toBeDefined();
-    expect(screen.getByText(/OPEN/i)).toBeDefined();
+    expect(screen.getAllByText(/OPEN/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Quoted Units:/i)).toBeNull();
   });
 
@@ -87,8 +87,8 @@ describe('TaskPage', () => {
     render(<TaskPage params={{ id: '2' }} />);
 
     expect(await screen.findByText(/Task #2/i)).toBeDefined();
-    expect(screen.getByText(/QUOTED/i)).toBeDefined();
-    expect(screen.getByText(/Quoted Units:/i)).toBeDefined();
+    expect(screen.getAllByText(/QUOTED/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Quoted Units:/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Quote Expires In:/i)).toBeDefined();
   });
 
@@ -96,7 +96,7 @@ describe('TaskPage', () => {
     render(<TaskPage params={{ id: '3' }} />);
 
     expect(await screen.findByText(/Task #3/i)).toBeDefined();
-    expect(screen.getByText(/ACTIVE/i)).toBeDefined();
+    expect(screen.getAllByText(/ACTIVE/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Deliverable Submission/i)).toBeDefined();
     expect(screen.getByPlaceholderText(/ipfs:\/\/\.\.\./i)).toBeDefined();
     expect(screen.getByPlaceholderText(/0x\.\.\./i)).toBeDefined();
@@ -106,7 +106,7 @@ describe('TaskPage', () => {
     render(<TaskPage params={{ id: '4' }} />);
 
     expect(await screen.findByText(/Task #4/i)).toBeDefined();
-    expect(screen.getByText(/SUBMITTED/i)).toBeDefined();
+    expect(screen.getAllByText(/SUBMITTED/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Deliverable Submission/i)).toBeDefined();
 
     const allInputs = screen.getAllByPlaceholderText(/ipfs:\/\/\.\.\./i);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import SearchPage from '../../app/page';
 import { SearchProvider } from '../../src/lib/context';
 
@@ -8,25 +8,46 @@ describe('SearchPage', () => {
     render(
       <SearchProvider>
         <SearchPage />
-      </SearchProvider>
+      </SearchProvider>,
     );
 
-    // Just check for presence of trust metrics text elements
-    expect(screen.getByText((content) => content.includes('Accept:'))).toBeDefined();
-    expect(screen.getByText((content) => content.includes('Dispute:'))).toBeDefined();
-    expect(screen.getByText((content) => content.includes('Silent:'))).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText(/result.*found/i)).toBeDefined();
+    });
+
+    expect(
+      screen.getAllByText((content) => content.includes('Accept:')).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((content) => content.includes('Dispute:')).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((content) => content.includes('Silent:')).length,
+    ).toBeGreaterThan(0);
   });
 
   it('should render badges when available', async () => {
     render(
       <SearchProvider>
         <SearchPage />
-      </SearchProvider>
+      </SearchProvider>,
     );
 
-    // Just check for presence of badge elements
-    expect(screen.getByText((content) => content.includes('✓ Metadata Validated')).toBeDefined();
-    expect(screen.getByText((content) => content.includes('✓ Endpoint Verified')).toBeDefined();
-    expect(screen.getByText((content) => content.includes('✓ Probe Passed')).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText(/result.*found/i)).toBeDefined();
+    });
+
+    expect(
+      screen.getAllByText((content) => content.includes('✓ Metadata Validated'))
+        .length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((content) => content.includes('✓ Endpoint Verified'))
+        .length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((content) => content.includes('✓ Probe Passed'))
+        .length,
+    ).toBeGreaterThan(0);
   });
 });
