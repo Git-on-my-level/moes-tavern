@@ -10,11 +10,16 @@ import type {
 export class MockApiClient implements ApiClient {
   private listings: Map<number, SearchListing>;
   private tasks: Map<number, Task>;
-  private nextTaskId = 1;
+  private nextTaskId = 100;
 
-  constructor(listings: SearchListing[] = []) {
+  constructor(listings: SearchListing[] = [], tasks: Task[] = []) {
     this.listings = new Map(listings.map((l) => [l.listingId, l]));
-    this.tasks = new Map();
+    this.tasks = new Map(tasks.map((t) => [t.taskId, t]));
+    for (const task of tasks) {
+      if (task.taskId >= this.nextTaskId) {
+        this.nextTaskId = task.taskId + 1;
+      }
+    }
   }
 
   async search(query: SearchQuery): Promise<SearchResponse> {
@@ -132,103 +137,175 @@ export class MockApiClient implements ApiClient {
   }
 }
 
-export const mockApiClient = new MockApiClient([
+const mockTasks: Task[] = [
   {
+    taskId: 1,
     listingId: 1,
     agentId: 1,
-    metadata: {
-      title: 'Code Review Assistant',
-      description: 'Expert code review with focus on security and performance',
-      tags: ['code-review', 'security', 'performance'],
-    },
-    pricing: {
-      unitType: 'LOC',
-      unitPrice: 10,
-      basePrice: 100,
-      minUnits: 10,
-      maxUnits: 1000,
-    },
-    metrics: {
-      agentId: 1,
-      postedCount: 50,
-      acceptedCount: 45,
-      submittedCount: 45,
-      disputeCount: 2,
-      settledCount: 43,
-      autoReleaseCount: 5,
-      cancelCount: 5,
-      acceptRate: 0.9,
-      disputeRate: 0.04,
-      cancelRate: 0.1,
-      silentAutoReleaseFrequency: 0.12,
-      avgTimeToSubmitSec: 3600,
-    },
-    curation: {
-      updatedAt: Date.now(),
-      badges: {
-        metadata_validated: true,
-        endpoint_verified: true,
-        probe_passed: true,
-      },
-      riskScore: 10,
-      probeScore: 0.9,
-      probeEvidenceURI: 'ipfs://test',
-      lint: { valid: true, errors: [], warnings: [], spamSignals: [] },
-      endpointHealth: {
-        total: 1,
-        okCount: 1,
-        failedCount: 0,
-        checkedAt: Date.now(),
-      },
-    },
+    buyer: '0xbuyer1',
+    status: 'OPEN',
+    taskURI: 'ipfs://task1',
+    proposedUnits: 50,
+    postedAt: Date.now() - 100000,
   },
   {
-    listingId: 2,
-    agentId: 2,
-    metadata: {
-      title: 'Data Processing Service',
-      description: 'Fast and reliable data processing and transformation',
-      tags: ['data', 'processing', 'transformation'],
-    },
-    pricing: {
-      unitType: 'MB',
-      unitPrice: 0.5,
-      basePrice: 50,
-      minUnits: 100,
-      maxUnits: 10000,
-    },
-    metrics: {
-      agentId: 2,
-      postedCount: 30,
-      acceptedCount: 28,
-      submittedCount: 28,
-      disputeCount: 1,
-      settledCount: 27,
-      autoReleaseCount: 3,
-      cancelCount: 2,
-      acceptRate: 0.93,
-      disputeRate: 0.04,
-      cancelRate: 0.07,
-      silentAutoReleaseFrequency: 0.11,
-      avgTimeToSubmitSec: 1800,
-    },
-    curation: {
-      updatedAt: Date.now(),
-      badges: {
-        metadata_validated: true,
-        endpoint_verified: false,
-        probe_passed: true,
-      },
-      riskScore: 15,
-      probeScore: 0.85,
-      probeEvidenceURI: 'ipfs://test2',
-      lint: { valid: true, errors: [], warnings: [], spamSignals: [] },
-      endpointHealth: {
-        total: 1,
-        okCount: 0,
-        failedCount: 1,
-        checkedAt: Date.now(),
-      },
-    },
+    taskId: 2,
+    listingId: 1,
+    agentId: 1,
+    buyer: '0xbuyer2',
+    status: 'QUOTED',
+    taskURI: 'ipfs://task2',
+    proposedUnits: 30,
+    quotedUnits: 30,
+    quotedTotalPrice: 400,
+    quoteExpiry: Date.now() + 3600000,
+    postedAt: Date.now() - 200000,
   },
-]);
+  {
+    taskId: 3,
+    listingId: 1,
+    agentId: 1,
+    buyer: '0xbuyer3',
+    status: 'ACTIVE',
+    taskURI: 'ipfs://task3',
+    proposedUnits: 20,
+    quotedUnits: 20,
+    quotedTotalPrice: 300,
+    quoteExpiry: Date.now() - 10000,
+    fundedAmount: 300,
+    postedAt: Date.now() - 300000,
+    acceptedAt: Date.now() - 100000,
+  },
+  {
+    taskId: 4,
+    listingId: 1,
+    agentId: 1,
+    buyer: '0xbuyer4',
+    status: 'SUBMITTED',
+    taskURI: 'ipfs://task4',
+    proposedUnits: 25,
+    quotedUnits: 25,
+    quotedTotalPrice: 350,
+    fundedAmount: 350,
+    artifactURI: 'ipfs://artifact4',
+    artifactHash: '0xabc123',
+    postedAt: Date.now() - 500000,
+    acceptedAt: Date.now() - 400000,
+    submittedAt: Date.now() - 100000,
+  },
+];
+
+export const mockApiClient = new MockApiClient(
+  [
+    {
+      listingId: 1,
+      agentId: 1,
+      metadata: {
+        title: 'Code Review Assistant',
+        description:
+          'Expert code review with focus on security and performance',
+        tags: ['code-review', 'security', 'performance'],
+      },
+      pricing: {
+        unitType: 'LOC',
+        unitPrice: 10,
+        basePrice: 100,
+        minUnits: 10,
+        maxUnits: 1000,
+      },
+      policy: {
+        challengeWindowSec: 86400,
+        postDisputeWindowSec: 604800,
+        sellerBondBps: 100,
+      },
+      metrics: {
+        agentId: 1,
+        postedCount: 50,
+        acceptedCount: 45,
+        submittedCount: 45,
+        disputeCount: 2,
+        settledCount: 43,
+        autoReleaseCount: 5,
+        cancelCount: 5,
+        acceptRate: 0.9,
+        disputeRate: 0.04,
+        cancelRate: 0.1,
+        silentAutoReleaseFrequency: 0.12,
+        avgTimeToSubmitSec: 3600,
+      },
+      curation: {
+        updatedAt: Date.now(),
+        badges: {
+          metadata_validated: true,
+          endpoint_verified: true,
+          probe_passed: true,
+        },
+        riskScore: 10,
+        probeScore: 0.9,
+        probeEvidenceURI: 'ipfs://test',
+        lint: { valid: true, errors: [], warnings: [], spamSignals: [] },
+        endpointHealth: {
+          total: 1,
+          okCount: 1,
+          failedCount: 0,
+          checkedAt: Date.now(),
+        },
+      },
+    },
+    {
+      listingId: 2,
+      agentId: 2,
+      metadata: {
+        title: 'Data Processing Service',
+        description: 'Fast and reliable data processing and transformation',
+        tags: ['data', 'processing', 'transformation'],
+      },
+      pricing: {
+        unitType: 'MB',
+        unitPrice: 0.5,
+        basePrice: 50,
+        minUnits: 100,
+        maxUnits: 10000,
+      },
+      policy: {
+        challengeWindowSec: 43200,
+        postDisputeWindowSec: 0,
+        sellerBondBps: 50,
+      },
+      metrics: {
+        agentId: 2,
+        postedCount: 30,
+        acceptedCount: 28,
+        submittedCount: 28,
+        disputeCount: 1,
+        settledCount: 27,
+        autoReleaseCount: 3,
+        cancelCount: 2,
+        acceptRate: 0.93,
+        disputeRate: 0.04,
+        cancelRate: 0.07,
+        silentAutoReleaseFrequency: 0.11,
+        avgTimeToSubmitSec: 1800,
+      },
+      curation: {
+        updatedAt: Date.now(),
+        badges: {
+          metadata_validated: true,
+          endpoint_verified: false,
+          probe_passed: true,
+        },
+        riskScore: 15,
+        probeScore: 0.85,
+        probeEvidenceURI: 'ipfs://test2',
+        lint: { valid: true, errors: [], warnings: [], spamSignals: [] },
+        endpointHealth: {
+          total: 1,
+          okCount: 0,
+          failedCount: 1,
+          checkedAt: Date.now(),
+        },
+      },
+    },
+  ],
+  mockTasks,
+);

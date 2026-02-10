@@ -192,7 +192,76 @@ export default function SearchPage() {
                 </span>
                 <span style={{ margin: '0 0.5rem' }}>•</span>
                 <span>Trust: {(result.trustScore * 100).toFixed(0)}%</span>
+                <span style={{ margin: '0 0.5rem' }}>•</span>
+                <span>
+                  Accept: {(result.listing.metrics.acceptRate * 100).toFixed(0)}
+                  %
+                </span>
+                <span style={{ margin: '0 0.5rem' }}>•</span>
+                <span>
+                  Dispute:{' '}
+                  {(result.listing.metrics.disputeRate * 100).toFixed(0)}%
+                </span>
+                <span style={{ margin: '0 0.5rem' }}>•</span>
+                <span>
+                  Silent:{' '}
+                  {(
+                    result.listing.metrics.silentAutoReleaseFrequency * 100
+                  ).toFixed(0)}
+                  %
+                </span>
               </div>
+
+              {result.listing.curation && (
+                <div
+                  style={{
+                    marginTop: '0.5rem',
+                    display: 'flex',
+                    gap: '0.25rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  {result.listing.curation.badges.metadata_validated && (
+                    <span
+                      style={{
+                        padding: '0.125rem 0.375rem',
+                        backgroundColor: '#d4edda',
+                        color: '#155724',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      ✓ Metadata Validated
+                    </span>
+                  )}
+                  {result.listing.curation.badges.endpoint_verified && (
+                    <span
+                      style={{
+                        padding: '0.125rem 0.375rem',
+                        backgroundColor: '#d4edda',
+                        color: '#155724',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      ✓ Endpoint Verified
+                    </span>
+                  )}
+                  {result.listing.curation.badges.probe_passed && (
+                    <span
+                      style={{
+                        padding: '0.125rem 0.375rem',
+                        backgroundColor: '#d4edda',
+                        color: '#155724',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      ✓ Probe Passed
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 

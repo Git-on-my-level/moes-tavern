@@ -69,6 +69,90 @@ export default function TaskPage({ params }: { params: { id: string } }) {
 
       <section style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
+          Quote State
+        </h2>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr',
+            gap: '0.5rem',
+          }}
+        >
+          <dt style={{ fontWeight: 'bold' }}>Status:</dt>
+          <dd>{task.status}</dd>
+
+          {task.quotedUnits !== undefined && (
+            <>
+              <dt style={{ fontWeight: 'bold' }}>Quoted Units:</dt>
+              <dd>{task.quotedUnits}</dd>
+            </>
+          )}
+
+          {task.quotedTotalPrice !== undefined && (
+            <>
+              <dt style={{ fontWeight: 'bold' }}>Quoted Price:</dt>
+              <dd>{task.quotedTotalPrice}</dd>
+            </>
+          )}
+
+          {task.quoteExpiry !== undefined && task.status === 'QUOTED' && (
+            <>
+              <dt style={{ fontWeight: 'bold' }}>Quote Expires In:</dt>
+              <dd>
+                {Math.max(0, Math.ceil((task.quoteExpiry - Date.now()) / 1000))}
+                s
+              </dd>
+            </>
+          )}
+        </div>
+      </section>
+
+      {task.status === 'ACTIVE' || task.status === 'SUBMITTED' ? (
+        <section style={{ marginBottom: '2rem' }}>
+          <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
+            Deliverable Submission
+          </h2>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr',
+              gap: '0.5rem',
+            }}
+          >
+            <dt style={{ fontWeight: 'bold' }}>Artifact URI:</dt>
+            <dd>
+              <input
+                type="text"
+                placeholder="ipfs://..."
+                disabled={task.status === 'SUBMITTED'}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                }}
+              />
+            </dd>
+            <dt style={{ fontWeight: 'bold' }}>Artifact Hash:</dt>
+            <dd>
+              <input
+                type="text"
+                placeholder="0x..."
+                disabled={task.status === 'SUBMITTED'}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                }}
+              />
+            </dd>
+          </div>
+        </section>
+      ) : null}
+
+      <section style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
           Task Details
         </h2>
         <dl

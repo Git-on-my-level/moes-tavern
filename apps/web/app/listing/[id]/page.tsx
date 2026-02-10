@@ -71,6 +71,25 @@ export default function ListingPage({ params }: { params: { id: string } }) {
       </section>
 
       <section style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Policy</h2>
+        <div style={{ display: 'flex', gap: '2rem' }}>
+          <div>
+            <strong>Challenge Window:</strong>{' '}
+            {listing.policy.challengeWindowSec}s
+          </div>
+          <div>
+            <strong>Post-Dispute Window:</strong>{' '}
+            {listing.policy.postDisputeWindowSec > 0
+              ? `${listing.policy.postDisputeWindowSec}s`
+              : 'Disabled'}
+          </div>
+          <div>
+            <strong>Seller Bond:</strong> {listing.policy.sellerBondBps / 100}%
+          </div>
+        </div>
+      </section>
+
+      <section style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Tags</h2>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {listing.metadata.tags.map((tag: string) => (
@@ -169,7 +188,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
       <section>
         <Link
-          href={`/task/new?listingId=${listing.listingId}`}
+          href={`/task/new?listingId=${listing.listingId}&unitType=${listing.pricing.unitType}`}
           style={{
             display: 'inline-block',
             padding: '0.75rem 1.5rem',

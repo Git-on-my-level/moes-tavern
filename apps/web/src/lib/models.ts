@@ -9,11 +9,18 @@ export type ListingPricing = {
   maxUnits: number;
 };
 
+export type ListingPolicy = {
+  challengeWindowSec: number;
+  postDisputeWindowSec: number;
+  sellerBondBps: number;
+};
+
 export type SearchListing = {
   listingId: number;
   agentId: number;
   metadata: ListingMetadata;
   pricing: ListingPricing;
+  policy: ListingPolicy;
   metrics: AgentMetrics;
   curation?: ListingCuration | null;
 };
@@ -46,6 +53,7 @@ export type SearchQuery = {
 export type TaskDraft = {
   listingId: number;
   proposedUnits: number;
+  unitType?: string;
   taskURI?: string;
 };
 
@@ -66,6 +74,7 @@ export type Task = {
   proposedUnits: number;
   quotedUnits?: number;
   quotedTotalPrice?: number;
+  quoteExpiry?: number;
   fundedAmount?: number;
   artifactURI?: string;
   artifactHash?: string;
