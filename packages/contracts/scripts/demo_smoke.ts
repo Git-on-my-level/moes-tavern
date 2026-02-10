@@ -1,15 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { ethers } from "hardhat";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { Indexer, type IndexerEvent, type ListingCuration } from "../../indexer/src/indexer";
-import {
-  checkEndpoints,
-  computeCurationBadges,
-  computeRiskScore,
-  lintListingMetadata,
-  runProbeFixture
-} from "../../curation/src/curation";
+import type { IndexerEvent, ListingCuration } from "../../indexer/src/indexer";
 
 const TASK_URI = "ipfs://task-1";
 const ARTIFACT_URI = "ipfs://artifact-1";
@@ -22,7 +16,23 @@ const listingMetadataById = new Map<number, { title: string; description: string
 
 const toNumber = (value: bigint | number | string) => Number(value);
 
+const dynamicImport = (modulePath: string) =>
+  new Function("modulePath", "return import(modulePath);")(
+    pathToFileURL(modulePath).href
+  ) as Promise<any>;
+
 async function main() {
+  const { Indexer } = await dynamicImport(
+    path.resolve(__dirname, "../../indexer/src/indexer.ts")
+  );
+  const {
+    checkEndpoints,
+    computeCurationBadges,
+    computeRiskScore,
+    lintListingMetadata,
+    runProbeFixture
+  } = await dynamicImport(path.resolve(__dirname, "../../curation/src/curation.ts"));
+
   const [owner, buyer, agent, other] = await ethers.getSigners();
 
   const AgentIdentityRegistry = await ethers.getContractFactory("AgentIdentityRegistry");

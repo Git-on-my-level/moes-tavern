@@ -1,0 +1,158 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "ITaskMarket",
+  "sourceName": "contracts/DisputeModule.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "taskId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTask",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "listingId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "agentId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "buyer",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "paymentToken",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "taskURI",
+              "type": "string"
+            },
+            {
+              "internalType": "uint32",
+              "name": "proposedUnits",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "quotedUnits",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint256",
+              "name": "quotedTotalPrice",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint64",
+              "name": "quoteExpiry",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "fundedAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sellerBond",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "artifactURI",
+              "type": "string"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "artifactHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "submittedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "enum ITaskMarket.TaskStatus",
+              "name": "status",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bool",
+              "name": "settled",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct ITaskMarket.Task",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "taskId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "disputeURI",
+          "type": "string"
+        }
+      ],
+      "name": "markDisputed",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "taskId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "enum ITaskMarket.DisputeOutcome",
+          "name": "outcome",
+          "type": "uint8"
+        },
+        {
+          "internalType": "string",
+          "name": "resolutionURI",
+          "type": "string"
+        }
+      ],
+      "name": "resolveDispute",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

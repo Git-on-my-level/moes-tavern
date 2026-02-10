@@ -6,12 +6,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@moes/curation": "workspace:*",
-    "@moes/indexer": "workspace:*",
+    "@moes/curation": "file:../curation",
+    "@moes/indexer": "file:../indexer",
     "minisearch": "^7.1.0"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
     "vitest": "^1.4.0"
-  }
+  },
+  "version": "0.0.0"
 }

@@ -87,16 +87,22 @@ export function lintListingMetadata(metadata: unknown): ListingMetadataLintResul
   }
 
   const record = metadata as Record<string, unknown>;
-  const title = typeof record.title === "string" ? record.title : "";
-  const description = typeof record.description === "string" ? record.description : "";
+  const titleValue = record.title;
+  const descriptionValue = record.description;
+  const title = typeof titleValue === "string" ? titleValue : "";
+  const description = typeof descriptionValue === "string" ? descriptionValue : "";
   const tags = Array.isArray(record.tags) ? record.tags : null;
 
-  if (!title) errors.push("title_missing");
-  if (!description) errors.push("description_missing");
+  if (titleValue === undefined || titleValue === null) errors.push("title_missing");
+  if (descriptionValue === undefined || descriptionValue === null) errors.push("description_missing");
   if (!tags) errors.push("tags_missing");
 
-  if (title && normalizeText(title).length === 0) errors.push("title_empty");
-  if (description && normalizeText(description).length === 0) errors.push("description_empty");
+  if (typeof titleValue === "string" && normalizeText(titleValue).length === 0) {
+    errors.push("title_empty");
+  }
+  if (typeof descriptionValue === "string" && normalizeText(descriptionValue).length === 0) {
+    errors.push("description_empty");
+  }
 
   if (tags) {
     const normalizedTags = tags

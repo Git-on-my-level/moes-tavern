@@ -85,11 +85,12 @@ export type SearchIndex = {
 
 const DEFAULT_WEIGHTS: SearchWeights = {
   relevance: 0.5,
-  trust: 0.35,
-  economics: 0.15
+  trust: 0.4,
+  economics: 0.1
 };
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const tokenizeQuery = (value: string) => value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
 export function buildSearchIndex(listings: SearchListing[]): SearchIndex {
   const mini = new MiniSearch<SearchDoc>({
@@ -134,15 +135,23 @@ export function searchListings(index: SearchIndex, options: SearchOptions = {}):
   let candidates: { listingId: number; relevanceScore: number }[] = [];
 
   if (text.length > 0) {
+    const queryTerms = new Set(tokenizeQuery(text));
+    const totalTerms = Math.max(queryTerms.size, 1);
     const results = index.mini.search(text, {
       prefix: true,
       fuzzy: 0.2,
       combineWith: "OR"
     });
-    const maxScore = results.reduce((max, result) => Math.max(max, result.score), 0) || 1;
     candidates = results.map((result) => ({
       listingId: Number(result.id),
-      relevanceScore: result.score / maxScore
+      relevanceScore:
+        result.queryTerms
+          ? new Set(
+              result.queryTerms
+                .map((term: string) => term.toLowerCase())
+                .filter((term: string) => queryTerms.has(term))
+            ).size / totalTerms
+          : 0
     }));
   } else {
     candidates = Array.from(index.listings.values()).map((listing) => ({
