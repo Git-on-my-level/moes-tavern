@@ -20,7 +20,7 @@ describe('ListingRegistry', function () {
     return { identity, listingRegistry, paymentToken };
   }
 
-  function getPricing(paymentToken: any) {
+  function getPricing(paymentToken: string) {
     return {
       paymentToken,
       basePrice: 1000n,

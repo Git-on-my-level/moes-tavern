@@ -437,7 +437,7 @@ export class Indexer {
       case 'TaskFunded':
         task.fundedAmount = event.amount;
         break;
-      case 'TaskAccepted':
+      case 'TaskAccepted': {
         task.status = 'QUOTED';
         task.quotedUnits = task.proposedUnits;
         const listing = this.listings.get(task.listingId ?? 0);
@@ -447,6 +447,7 @@ export class Indexer {
             (task.proposedUnits ?? 0) * listing.pricing.unitPrice;
         }
         break;
+      }
       case 'DeliverableSubmitted':
         task.artifactURI = event.artifactURI;
         task.artifactHash = event.artifactHash;
