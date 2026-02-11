@@ -473,7 +473,9 @@ describe('TaskMarket', function () {
     await taskMarket
       .connect(agent)
       .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
-    await disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-timeout-1');
+    await disputeModule
+      .connect(buyer)
+      .openDispute(1, 'ipfs://dispute-timeout-1');
 
     const disputed = await taskMarket.getTask(1);
     expect(disputed.status).to.equal(4);
@@ -487,7 +489,8 @@ describe('TaskMarket', function () {
 
     const buyerStart = await token.balanceOf(buyer.address);
     const agentStart = await token.balanceOf(agent.address);
-    const deadline = BigInt(disputed.disputedAt) + BigInt(policy.postDisputeWindowSec);
+    const deadline =
+      BigInt(disputed.disputedAt) + BigInt(policy.postDisputeWindowSec);
 
     await expect(taskMarket.connect(owner).settleAfterPostDisputeTimeout(1))
       .to.emit(taskMarket, 'PostDisputeTimeoutSettled')
@@ -501,18 +504,22 @@ describe('TaskMarket', function () {
     const agentEnd = await token.balanceOf(agent.address);
 
     expect(buyerEnd - buyerStart).to.equal(0n);
-    expect(agentEnd - agentStart).to.equal(task.quotedTotalPrice + requiredBond);
+    expect(agentEnd - agentStart).to.equal(
+      task.quotedTotalPrice + requiredBond,
+    );
 
     await disputeModule.connect(owner).setResolver(owner.address, true);
     await expect(
-      disputeModule.connect(owner).resolveDispute(1, 1, 'ipfs://resolution-timeout-1'),
+      disputeModule
+        .connect(owner)
+        .resolveDispute(1, 1, 'ipfs://resolution-timeout-1'),
     ).to.be.revertedWith('TaskMarket: not disputed');
     await expect(
       taskMarket.connect(owner).settleAfterPostDisputeTimeout(1),
     ).to.be.revertedWith('TaskMarket: not disputed');
-    await expect(taskMarket.connect(owner).settleAfterTimeout(1)).to.be.revertedWith(
-      'TaskMarket: not submitted',
-    );
+    await expect(
+      taskMarket.connect(owner).settleAfterTimeout(1),
+    ).to.be.revertedWith('TaskMarket: not submitted');
   });
 
   it('allows acceptQuote after expiry when funded before expiry', async function () {
@@ -775,5 +782,45 @@ describe('TaskMarket', function () {
     await expect(
       taskMarket.connect(agent).sellerCancelQuote(2),
     ).to.be.revertedWith('TaskMarket: not quoted');
+  });
+
+  it('blocks opening dispute after challenge window expires', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
+      await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { challengeWindowSec: 3600 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 1);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    await time.increase(policy.challengeWindowSec + 1);
+
+    await expect(
+      disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-expired'),
+    ).to.be.revertedWith('DisputeModule: challenge window expired');
+
+    await expect(
+      taskMarket
+        .connect(buyer)
+        .disputeSubmission(1, 'ipfs://dispute-expired-via-market'),
+    ).to.be.revertedWith('DisputeModule: challenge window expired');
   });
 });

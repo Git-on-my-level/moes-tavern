@@ -42,10 +42,34 @@ interface ITaskMarket {
     }
 
     function getTask(uint256 taskId) external view returns (Task memory);
+    function listingRegistry() external view returns (address);
 
     function markDisputed(uint256 taskId, string calldata disputeURI) external;
 
     function resolveDispute(uint256 taskId, DisputeOutcome outcome, string calldata resolutionURI) external;
+}
+
+interface IListingRegistry {
+    struct Pricing {
+        address paymentToken;
+        uint256 basePrice;
+        bytes32 unitType;
+        uint256 unitPrice;
+        uint32 minUnits;
+        uint32 maxUnits;
+        bool quoteRequired;
+    }
+
+    struct Policy {
+        uint32 challengeWindowSec;
+        uint32 postDisputeWindowSec;
+        uint32 deliveryWindowSec;
+        uint16 sellerBondBps;
+    }
+
+    function getListing(
+        uint256 listingId
+    ) external view returns (uint256 agentId, string memory listingURI, Pricing memory pricing, Policy memory policy, bool active);
 }
 
 contract DisputeModule {
@@ -114,6 +138,12 @@ contract DisputeModule {
         }
         if (msg.sender != address(taskMarket) && task.buyer != msg.sender) {
             revert("DisputeModule: buyer only");
+        }
+
+        (, , , IListingRegistry.Policy memory policy, ) = IListingRegistry(taskMarket.listingRegistry()).getListing(task.listingId);
+        uint256 deadline = uint256(task.submittedAt) + uint256(policy.challengeWindowSec);
+        if (block.timestamp > deadline) {
+            revert("DisputeModule: challenge window expired");
         }
 
         record.opened = true;
