@@ -385,10 +385,11 @@ describe('TaskMarket', function () {
     expect(active.seller).to.equal(agent.address);
 
     await identity
-      .connect(agent)
-      [
-        'safeTransferFrom(address,address,uint256)'
-      ](agent.address, other.address, 1);
+      .connect(agent)['safeTransferFrom(address,address,uint256)'](
+        agent.address,
+        other.address,
+        1,
+      );
 
     await expect(
       taskMarket
@@ -983,7 +984,11 @@ describe('TaskMarket', function () {
       taskMarket.connect(other).sellerCancelQuote(2),
     ).to.be.revertedWith('TaskMarket: not authorized');
 
-    await taskMarket.connect(agent).sellerCancelQuote(2);
+    await expect(taskMarket.connect(agent).sellerCancelQuote(2))
+      .to.emit(taskMarket, 'TaskCancelled')
+      .withArgs(2)
+      .and.to.emit(taskMarket, 'SellerCancelledQuote')
+      .withArgs(2, requiredBond);
 
     const agentBalanceAfter = await token.balanceOf(agent.address);
     expect(agentBalanceAfter - agentBalanceBefore).to.equal(requiredBond);
@@ -1028,7 +1033,7 @@ describe('TaskMarket', function () {
       .connect(agent)
       .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
 
-    await time.increase(policy.challengeWindowSec + 1);
+    await time.increase(policy.challengeWindowSec);
 
     await expect(
       disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-expired'),

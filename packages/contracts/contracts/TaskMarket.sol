@@ -335,6 +335,7 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
             IERC20(task.paymentToken).safeTransfer(task.bondFunder, refund);
         }
 
+        emit TaskCancelled(taskId);
         emit SellerCancelledQuote(taskId, refund);
     }
 

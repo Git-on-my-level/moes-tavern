@@ -137,7 +137,7 @@ contract DisputeModule is Ownable2Step {
 
         (, , , IListingRegistry.Policy memory policy, ) = IListingRegistry(taskMarket.listingRegistry()).getListing(task.listingId);
         uint256 deadline = uint256(task.submittedAt) + uint256(policy.challengeWindowSec);
-        if (block.timestamp > deadline) {
+        if (block.timestamp >= deadline) {
             revert("DisputeModule: challenge window expired");
         }
 
