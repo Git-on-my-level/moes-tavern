@@ -23,6 +23,7 @@ interface IListingRegistry {
         uint32 postDisputeWindowSec;
         uint32 deliveryWindowSec;
         uint16 sellerBondBps;
+        uint32 deliveryWindowSec;
     }
 
     function getListing(
@@ -408,6 +409,11 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
         }
         if (task.fundedAmount == 0) {
             revert("TaskMarket: not funded");
+        }
+        (, , , IListingRegistry.Policy memory policy, ) = listingRegistry.getListing(task.listingId);
+        uint256 deadline = uint256(task.activatedAt) + uint256(policy.deliveryWindowSec);
+        if (block.timestamp > deadline) {
+            revert("TaskMarket: delivery window expired");
         }
 
         task.artifactURI = artifactURI;

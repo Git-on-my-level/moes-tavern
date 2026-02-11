@@ -232,7 +232,6 @@ describe('ListingRegistry', function () {
     ).to.be.revertedWith('ListingRegistry: challengeWindow must be positive');
   });
 
-<<<<<<< HEAD
   it('rejects createListing with URI exceeding MAX_URI_LENGTH', async function () {
     const { identity, listingRegistry, paymentToken } = await deployFixture();
 

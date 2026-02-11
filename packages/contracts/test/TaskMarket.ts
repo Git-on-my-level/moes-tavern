@@ -22,6 +22,7 @@ const policyTemplate = {
   postDisputeWindowSec: 0,
   deliveryWindowSec: 7200,
   sellerBondBps: 0,
+  deliveryWindowSec: 86400,
 };
 
 describe('TaskMarket', function () {
@@ -1260,5 +1261,40 @@ describe('TaskMarket', function () {
     await expect(
       disputeModule.connect(owner).resolveDispute(1, 0, longURI),
     ).to.be.revertedWith('DisputeModule: URI too long');
+  });
+
+  it('rejects submission after delivery window expires', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    const { pricing, policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 1);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const activeTask = await taskMarket.getTask(1);
+    expect(activeTask.status).to.equal(2);
+    expect(activeTask.activatedAt).to.be.greaterThan(0);
+
+    await time.increase(Number(policy.deliveryWindowSec) + 1);
+
+    await expect(
+      taskMarket
+        .connect(agent)
+        .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: delivery window expired');
   });
 });
