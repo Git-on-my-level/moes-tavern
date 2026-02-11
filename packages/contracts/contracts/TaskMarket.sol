@@ -73,6 +73,7 @@ contract TaskMarket is ReentrancyGuard {
         uint64 quoteExpiry;
         uint256 fundedAmount;
         uint256 sellerBond;
+        address bondFunder;
         string artifactURI;
         bytes32 artifactHash;
         uint64 activatedAt;
@@ -249,6 +250,7 @@ contract TaskMarket is ReentrancyGuard {
             revert("TaskMarket: bond amount mismatch");
         }
         task.sellerBond = amount;
+        task.bondFunder = msg.sender;
         IERC20(task.paymentToken).safeTransferFrom(msg.sender, address(this), amount);
 
         emit SellerBondFunded(taskId, amount);
@@ -270,7 +272,7 @@ contract TaskMarket is ReentrancyGuard {
         task.quoteExpiry = 0;
         task.status = TaskStatus.CANCELLED;
         if (refund > 0) {
-            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), refund);
+            IERC20(task.paymentToken).safeTransfer(task.bondFunder, refund);
         }
 
         emit SellerCancelledQuote(taskId, refund);
@@ -459,7 +461,7 @@ contract TaskMarket is ReentrancyGuard {
         if (task.sellerBond != 0) {
             uint256 refund = task.sellerBond;
             task.sellerBond = 0;
-            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), refund);
+            IERC20(task.paymentToken).safeTransfer(task.bondFunder, refund);
         }
 
         emit TaskCancelled(taskId);
@@ -522,13 +524,15 @@ contract TaskMarket is ReentrancyGuard {
         uint256 sellerEscrowPayout = task.fundedAmount - buyerEscrowPayout;
         uint256 sellerBondRefund = task.sellerBond - buyerBondPayout;
         uint256 buyerTotal = buyerEscrowPayout + buyerBondPayout;
-        uint256 sellerTotal = sellerEscrowPayout + sellerBondRefund;
 
         if (buyerTotal > 0) {
             IERC20(task.paymentToken).safeTransfer(task.buyer, buyerTotal);
         }
-        if (sellerTotal > 0) {
-            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), sellerTotal);
+        if (sellerEscrowPayout > 0) {
+            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), sellerEscrowPayout);
+        }
+        if (sellerBondRefund > 0) {
+            IERC20(task.paymentToken).safeTransfer(task.bondFunder, sellerBondRefund);
         }
 
         emit TaskSettled(task.id, buyerTotal, sellerBondRefund);

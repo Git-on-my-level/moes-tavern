@@ -26,7 +26,7 @@ const policyTemplate = {
 
 describe('TaskMarket', function () {
   async function deployFixture() {
-    const [owner, buyer, agent, other] = await ethers.getSigners();
+    const [owner, buyer, agent, other, operator] = await ethers.getSigners();
 
     const AgentIdentityRegistry = await ethers.getContractFactory(
       'AgentIdentityRegistry',
@@ -56,6 +56,7 @@ describe('TaskMarket', function () {
       buyer,
       agent,
       other,
+      operator,
       identity,
       listingRegistry,
       taskMarket,
@@ -433,7 +434,7 @@ describe('TaskMarket', function () {
     expect(agentEnd - agentStart).to.equal(0n);
   });
 
-  it('settles disputed tasks after post-dispute timeout with seller-win default', async function () {
+  it('settles disputed tasks after post-dispute timeout with seller-win default, bond goes to bond funder', async function () {
     const {
       buyer,
       agent,
@@ -499,6 +500,7 @@ describe('TaskMarket', function () {
     const settled = await taskMarket.getTask(1);
     expect(settled.status).to.equal(5);
     expect(settled.settled).to.equal(true);
+    expect(settled.bondFunder).to.equal(agent.address);
 
     const buyerEnd = await token.balanceOf(buyer.address);
     const agentEnd = await token.balanceOf(agent.address);
@@ -588,7 +590,7 @@ describe('TaskMarket', function () {
     expect(task.sellerBond).to.equal(requiredBond);
   });
 
-  it('refunds escrow and seller bond on cancellation in QUOTED', async function () {
+  it('refunds escrow and seller bond to bond funder on cancellation in QUOTED', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();
     const { pricing, policy } = await createListing(
@@ -630,6 +632,7 @@ describe('TaskMarket', function () {
 
     const task = await taskMarket.getTask(1);
     expect(task.status).to.equal(6);
+    expect(task.bondFunder).to.equal(agent.address);
   });
 
   it('allows buyer to cancel ACTIVE task for non-delivery after deadline and claim bond', async function () {
@@ -714,7 +717,7 @@ describe('TaskMarket', function () {
     ).to.be.revertedWith('TaskMarket: not active');
   });
 
-  it('allows seller to cancel quote and recover bond when buyer never funds', async function () {
+  it('allows seller to cancel quote and recover bond to bond funder when buyer never funds', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token, other } =
       await deployFixture();
     const { pricing, policy } = await createListing(
@@ -775,6 +778,7 @@ describe('TaskMarket', function () {
     const task = await taskMarket.getTask(2);
     expect(task.status).to.equal(6);
     expect(task.sellerBond).to.equal(0n);
+    expect(task.bondFunder).to.equal(agent.address);
     expect(task.quotedUnits).to.equal(0);
     expect(task.quotedTotalPrice).to.equal(0n);
     expect(task.quoteExpiry).to.equal(0);
@@ -822,5 +826,56 @@ describe('TaskMarket', function () {
         .connect(buyer)
         .disputeSubmission(1, 'ipfs://dispute-expired-via-market'),
     ).to.be.revertedWith('DisputeModule: challenge window expired');
+  });
+
+  it('refunds bond to operator when operator funds bond and buyer cancels task', async function () {
+    const {
+      buyer,
+      agent,
+      operator,
+      identity,
+      listingRegistry,
+      taskMarket,
+      token,
+    } = await deployFixture();
+    const { pricing, policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: true },
+      { sellerBondBps: 2000 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+    await token.mint(operator.address, 10_000n);
+
+    await identity.connect(agent).approve(operator.address, 1);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 3);
+    const quotedTotalPrice = pricing.basePrice + 3n * pricing.unitPrice;
+    await taskMarket.connect(agent).proposeQuote(1, 3, quotedTotalPrice, 0);
+
+    const requiredBond =
+      (quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+
+    await token.connect(operator).approve(taskMarket.target, requiredBond);
+    await taskMarket.connect(operator).fundSellerBond(1, requiredBond);
+
+    const task = await taskMarket.getTask(1);
+    expect(task.bondFunder).to.equal(operator.address);
+
+    const operatorBalanceBefore = await token.balanceOf(operator.address);
+    const agentBalanceBefore = await token.balanceOf(agent.address);
+
+    await taskMarket.connect(buyer).cancelTask(1);
+
+    const operatorBalanceAfter = await token.balanceOf(operator.address);
+    const agentBalanceAfter = await token.balanceOf(agent.address);
+
+    expect(operatorBalanceAfter - operatorBalanceBefore).to.equal(requiredBond);
+    expect(agentBalanceAfter - agentBalanceBefore).to.equal(0n);
+
+    const cancelled = await taskMarket.getTask(1);
+    expect(cancelled.status).to.equal(6);
   });
 });

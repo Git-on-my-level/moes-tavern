@@ -32,6 +32,7 @@ interface ITaskMarket {
         uint64 quoteExpiry;
         uint256 fundedAmount;
         uint256 sellerBond;
+        address bondFunder;
         string artifactURI;
         bytes32 artifactHash;
         uint64 activatedAt;
