@@ -20,12 +20,13 @@ const pricingTemplate = {
 const policyTemplate = {
   challengeWindowSec: 3600,
   postDisputeWindowSec: 0,
+  deliveryWindowSec: 7200,
   sellerBondBps: 0,
 };
 
 describe('TaskMarket', function () {
   async function deployFixture() {
-    const [owner, buyer, agent, other] = await ethers.getSigners();
+    const [owner, buyer, agent, other, operator] = await ethers.getSigners();
 
     const AgentIdentityRegistry = await ethers.getContractFactory(
       'AgentIdentityRegistry',
@@ -55,6 +56,7 @@ describe('TaskMarket', function () {
       buyer,
       agent,
       other,
+      operator,
       identity,
       listingRegistry,
       taskMarket,
@@ -82,6 +84,94 @@ describe('TaskMarket', function () {
     return { pricing, policy };
   }
 
+  it('supports two-step ownership transfer for TaskMarket and DisputeModule admin controls', async function () {
+    const { owner, other, taskMarket, disputeModule } = await deployFixture();
+
+    const replacementDisputeModule = await (
+      await ethers.getContractFactory('DisputeModule')
+    ).deploy(taskMarket.target, []);
+
+    await taskMarket.transferOwnership(other.address);
+    await taskMarket.connect(other).acceptOwnership();
+    expect(await taskMarket.owner()).to.equal(other.address);
+
+    await expect(taskMarket.setDisputeModule(replacementDisputeModule.target))
+      .to.be.revertedWithCustomError(taskMarket, 'OwnableUnauthorizedAccount')
+      .withArgs(owner.address);
+
+    await taskMarket.connect(other).setDisputeModule(replacementDisputeModule.target);
+    await expect(taskMarket.connect(other).executeDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: update timelocked',
+    );
+    await time.increase(Number(await taskMarket.DISPUTE_MODULE_UPDATE_DELAY()) + 1);
+    await taskMarket.connect(other).executeDisputeModuleUpdate();
+    expect(await taskMarket.disputeModule()).to.equal(replacementDisputeModule.target);
+
+    await disputeModule.transferOwnership(other.address);
+    await disputeModule.connect(other).acceptOwnership();
+    expect(await disputeModule.owner()).to.equal(other.address);
+
+    await expect(disputeModule.connect(owner).setResolver(owner.address, true))
+      .to.be.revertedWithCustomError(disputeModule, 'OwnableUnauthorizedAccount')
+      .withArgs(owner.address);
+    await disputeModule.connect(other).setResolver(other.address, true);
+    expect(await disputeModule.resolvers(other.address)).to.equal(true);
+  });
+
+  it('schedules, cancels, and executes dispute module updates with delay', async function () {
+    const { owner, taskMarket } = await deployFixture();
+    const nextDisputeModule = await (
+      await ethers.getContractFactory('DisputeModule')
+    ).deploy(taskMarket.target, []);
+    const replacementDisputeModule = await (
+      await ethers.getContractFactory('DisputeModule')
+    ).deploy(taskMarket.target, []);
+
+    const currentDisputeModule = await taskMarket.disputeModule();
+    const delay = Number(await taskMarket.DISPUTE_MODULE_UPDATE_DELAY());
+
+    const scheduleTx = await taskMarket.setDisputeModule(nextDisputeModule.target);
+    const scheduledActivation = BigInt((await time.latest()) + delay);
+    await expect(scheduleTx)
+      .to.emit(taskMarket, 'DisputeModuleUpdateScheduled')
+      .withArgs(currentDisputeModule, nextDisputeModule.target, scheduledActivation);
+    expect(await taskMarket.pendingDisputeModule()).to.equal(nextDisputeModule.target);
+    expect(await taskMarket.pendingDisputeModuleActivationTime()).to.equal(
+      scheduledActivation,
+    );
+
+    await expect(taskMarket.executeDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: update timelocked',
+    );
+
+    await expect(taskMarket.cancelDisputeModuleUpdate())
+      .to.emit(taskMarket, 'DisputeModuleUpdateCancelled')
+      .withArgs(nextDisputeModule.target);
+    expect(await taskMarket.pendingDisputeModule()).to.equal(ethers.ZeroAddress);
+    expect(await taskMarket.pendingDisputeModuleActivationTime()).to.equal(0);
+
+    await expect(taskMarket.executeDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: no pending update',
+    );
+
+    const rescheduleTx = await taskMarket.setDisputeModule(replacementDisputeModule.target);
+    const rescheduledActivation = BigInt((await time.latest()) + delay);
+    await expect(rescheduleTx)
+      .to.emit(taskMarket, 'DisputeModuleUpdateScheduled')
+      .withArgs(currentDisputeModule, replacementDisputeModule.target, rescheduledActivation);
+
+    await time.increase(delay + 1);
+    await expect(taskMarket.executeDisputeModuleUpdate())
+      .to.emit(taskMarket, 'DisputeModuleUpdated')
+      .withArgs(currentDisputeModule, replacementDisputeModule.target);
+    expect(await taskMarket.disputeModule()).to.equal(replacementDisputeModule.target);
+    expect(await taskMarket.pendingDisputeModule()).to.equal(ethers.ZeroAddress);
+
+    await expect(taskMarket.connect(owner).cancelDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: no pending update',
+    );
+  });
+
   it('runs happy path quote -> fund -> accept -> submit -> settle', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();
@@ -108,7 +198,22 @@ describe('TaskMarket', function () {
     await taskMarket
       .connect(agent)
       .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
-    await taskMarket.connect(buyer).acceptSubmission(1);
+
+    const settleTx = await taskMarket.connect(buyer).acceptSubmission(1);
+
+    await expect(settleTx)
+      .to.emit(taskMarket, 'TaskSettledV2')
+      .withArgs(
+        1,
+        buyer.address,
+        agent.address,
+        ethers.ZeroAddress,
+        0,
+        0,
+        quotedTotalPrice,
+        0,
+        0,
+      );
 
     const task = await taskMarket.getTask(1);
     expect(task.status).to.equal(5);
@@ -247,7 +352,66 @@ describe('TaskMarket', function () {
       taskMarket
         .connect(other)
         .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
-    ).to.be.revertedWith('TaskMarket: not authorized');
+    ).to.be.revertedWith('TaskMarket: seller only');
+  });
+
+  it('snapshots seller on acceptQuote; transfer does not change submitter or payout', async function () {
+    const {
+      buyer,
+      agent,
+      other,
+      identity,
+      listingRegistry,
+      taskMarket,
+      token,
+    } = await deployFixture();
+    await createListing(listingRegistry, agent, token.target, {
+      quoteRequired: false,
+    });
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const quoted = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, quoted.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, quoted.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const active = await taskMarket.getTask(1);
+    expect(active.seller).to.equal(agent.address);
+
+    await identity
+      .connect(agent)['safeTransferFrom(address,address,uint256)'](
+        agent.address,
+        other.address,
+        1,
+      );
+
+    await expect(
+      taskMarket
+        .connect(other)
+        .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: seller only');
+
+    const agentBalanceBefore = await token.balanceOf(agent.address);
+    const newOwnerBalanceBefore = await token.balanceOf(other.address);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+    await taskMarket.connect(buyer).acceptSubmission(1);
+
+    const agentBalanceAfter = await token.balanceOf(agent.address);
+    const newOwnerBalanceAfter = await token.balanceOf(other.address);
+
+    expect(agentBalanceAfter - agentBalanceBefore).to.equal(
+      quoted.quotedTotalPrice,
+    );
+    expect(newOwnerBalanceAfter - newOwnerBalanceBefore).to.equal(0n);
   });
 
   it('enforces buyer-only dispute opening and resolver-only resolution', async function () {
@@ -432,6 +596,96 @@ describe('TaskMarket', function () {
     expect(agentEnd - agentStart).to.equal(0n);
   });
 
+  it('settles disputed tasks after post-dispute timeout with seller-win default, bond goes to bond funder', async function () {
+    const {
+      buyer,
+      agent,
+      listingRegistry,
+      taskMarket,
+      disputeModule,
+      token,
+      owner,
+    } = await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { postDisputeWindowSec: 300, sellerBondBps: 2500 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+    await token.mint(agent.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    const requiredBond =
+      (task.quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+
+    await token.connect(agent).approve(taskMarket.target, requiredBond);
+    await taskMarket.connect(agent).fundSellerBond(1, requiredBond);
+
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+    await disputeModule
+      .connect(buyer)
+      .openDispute(1, 'ipfs://dispute-timeout-1');
+
+    const disputed = await taskMarket.getTask(1);
+    expect(disputed.status).to.equal(4);
+    expect(disputed.disputedAt).to.not.equal(0n);
+
+    await expect(
+      taskMarket.connect(owner).settleAfterPostDisputeTimeout(1),
+    ).to.be.revertedWith('TaskMarket: post-dispute window');
+
+    await time.increase(policy.postDisputeWindowSec + 1);
+
+    const buyerStart = await token.balanceOf(buyer.address);
+    const agentStart = await token.balanceOf(agent.address);
+    const deadline =
+      BigInt(disputed.disputedAt) + BigInt(policy.postDisputeWindowSec);
+
+    await expect(taskMarket.connect(owner).settleAfterPostDisputeTimeout(1))
+      .to.emit(taskMarket, 'PostDisputeTimeoutSettled')
+      .withArgs(1, deadline, 0);
+
+    const settled = await taskMarket.getTask(1);
+    expect(settled.status).to.equal(5);
+    expect(settled.settled).to.equal(true);
+    expect(settled.bondFunder).to.equal(agent.address);
+
+    const buyerEnd = await token.balanceOf(buyer.address);
+    const agentEnd = await token.balanceOf(agent.address);
+
+    expect(buyerEnd - buyerStart).to.equal(0n);
+    expect(agentEnd - agentStart).to.equal(
+      task.quotedTotalPrice + requiredBond,
+    );
+
+    await disputeModule.connect(owner).setResolver(owner.address, true);
+    await expect(
+      disputeModule
+        .connect(owner)
+        .resolveDispute(1, 1, 'ipfs://resolution-timeout-1'),
+    ).to.be.revertedWith('TaskMarket: not disputed');
+    await expect(
+      taskMarket.connect(owner).settleAfterPostDisputeTimeout(1),
+    ).to.be.revertedWith('TaskMarket: not disputed');
+    await expect(
+      taskMarket.connect(owner).settleAfterTimeout(1),
+    ).to.be.revertedWith('TaskMarket: not submitted');
+  });
+
   it('allows acceptQuote after expiry when funded before expiry', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();
@@ -498,7 +752,59 @@ describe('TaskMarket', function () {
     expect(task.sellerBond).to.equal(requiredBond);
   });
 
-  it('refunds escrow and seller bond on cancellation in QUOTED', async function () {
+  it('rejects fundTask when payment token is fee-on-transfer', async function () {
+    const { buyer, agent, listingRegistry, taskMarket } = await deployFixture();
+    const FeeOnTransferERC20 =
+      await ethers.getContractFactory('FeeOnTransferERC20');
+    const feeToken = await FeeOnTransferERC20.deploy('Fee USD', 'fUSD', 100);
+    const { pricing } = await createListing(
+      listingRegistry,
+      agent,
+      feeToken.target,
+      { quoteRequired: true },
+    );
+
+    await feeToken.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 5);
+    const quotedTotalPrice = pricing.basePrice + 5n * pricing.unitPrice;
+    await taskMarket.connect(agent).proposeQuote(1, 5, quotedTotalPrice, 0);
+
+    await feeToken.connect(buyer).approve(taskMarket.target, quotedTotalPrice);
+    await expect(
+      taskMarket.connect(buyer).fundTask(1, quotedTotalPrice),
+    ).to.be.revertedWith('TaskMarket: fee-on-transfer unsupported');
+  });
+
+  it('rejects fundSellerBond when payment token is fee-on-transfer', async function () {
+    const { buyer, agent, listingRegistry, taskMarket } = await deployFixture();
+    const FeeOnTransferERC20 =
+      await ethers.getContractFactory('FeeOnTransferERC20');
+    const feeToken = await FeeOnTransferERC20.deploy('Fee USD', 'fUSD', 5000);
+    const { pricing, policy } = await createListing(
+      listingRegistry,
+      agent,
+      feeToken.target,
+      { quoteRequired: true },
+      { sellerBondBps: 2000 },
+    );
+
+    await feeToken.mint(buyer.address, 10_000n);
+    await feeToken.mint(agent.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 5);
+    const quotedTotalPrice = pricing.basePrice + 5n * pricing.unitPrice;
+    await taskMarket.connect(agent).proposeQuote(1, 5, quotedTotalPrice, 0);
+
+    const requiredBond =
+      (quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+    await feeToken.connect(agent).approve(taskMarket.target, requiredBond);
+    await expect(
+      taskMarket.connect(agent).fundSellerBond(1, requiredBond),
+    ).to.be.revertedWith('TaskMarket: fee-on-transfer unsupported');
+  });
+
+  it('refunds escrow and seller bond to bond funder on cancellation in QUOTED', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();
     const { pricing, policy } = await createListing(
@@ -540,5 +846,254 @@ describe('TaskMarket', function () {
 
     const task = await taskMarket.getTask(1);
     expect(task.status).to.equal(6);
+    expect(task.bondFunder).to.equal(agent.address);
+  });
+
+  it('allows buyer to cancel ACTIVE task for non-delivery after deadline and claim bond', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { sellerBondBps: 2500, deliveryWindowSec: 120 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+    await token.mint(agent.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 4);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const activeTask = await taskMarket.getTask(1);
+    const requiredBond =
+      (activeTask.quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+
+    await token.connect(agent).approve(taskMarket.target, requiredBond);
+    await taskMarket.connect(agent).fundSellerBond(1, requiredBond);
+
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, activeTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, activeTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await expect(
+      taskMarket.connect(buyer).cancelForNonDelivery(1),
+    ).to.be.revertedWith('TaskMarket: delivery window');
+
+    await time.increase(policy.deliveryWindowSec + 1);
+
+    const buyerBalanceBefore = await token.balanceOf(buyer.address);
+    const cancelTx = taskMarket.connect(buyer).cancelForNonDelivery(1);
+    await expect(cancelTx)
+      .to.emit(taskMarket, 'TaskCancelledForNonDelivery')
+      .withArgs(1, activeTask.quotedTotalPrice, requiredBond);
+
+    const buyerBalanceAfter = await token.balanceOf(buyer.address);
+    expect(buyerBalanceAfter - buyerBalanceBefore).to.equal(
+      activeTask.quotedTotalPrice + requiredBond,
+    );
+
+    const task = await taskMarket.getTask(1);
+    expect(task.status).to.equal(6);
+    expect(task.settled).to.equal(true);
+    expect(task.fundedAmount).to.equal(0n);
+    expect(task.sellerBond).to.equal(0n);
+
+    await expect(
+      taskMarket.connect(buyer).cancelForNonDelivery(1),
+    ).to.be.revertedWith('TaskMarket: not active');
+
+    await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { sellerBondBps: 0, deliveryWindowSec: 120 },
+    );
+
+    await taskMarket.connect(buyer).postTask(2, 'ipfs://task-2', 2);
+    await taskMarket.connect(agent).acceptTask(2);
+    const secondTask = await taskMarket.getTask(2);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, secondTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(2, secondTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(2);
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(2, ARTIFACT_URI, ARTIFACT_HASH);
+    await time.increase(policy.deliveryWindowSec + 1);
+    await expect(
+      taskMarket.connect(buyer).cancelForNonDelivery(2),
+    ).to.be.revertedWith('TaskMarket: not active');
+  });
+
+  it('allows seller to cancel quote and recover bond to bond funder when buyer never funds', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token, other } =
+      await deployFixture();
+    const { pricing, policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: true },
+      { sellerBondBps: 2000 },
+    );
+
+    await token.mint(agent.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 5);
+    const quotedTotalPrice = pricing.basePrice + 5n * pricing.unitPrice;
+    await taskMarket.connect(agent).proposeQuote(1, 5, quotedTotalPrice, 0);
+
+    const requiredBond =
+      (quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+
+    await token.connect(agent).approve(taskMarket.target, requiredBond);
+    await taskMarket.connect(agent).fundSellerBond(1, requiredBond);
+
+    await token.mint(buyer.address, 10_000n);
+    await token.connect(buyer).approve(taskMarket.target, quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, quotedTotalPrice);
+
+    await expect(
+      taskMarket.connect(agent).sellerCancelQuote(1),
+    ).to.be.revertedWith('TaskMarket: task funded');
+
+    await taskMarket.connect(buyer).cancelTask(1);
+
+    await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: true },
+      { sellerBondBps: 2000 },
+    );
+
+    await taskMarket.connect(buyer).postTask(2, 'ipfs://task-2', 5);
+    await taskMarket.connect(agent).proposeQuote(2, 5, quotedTotalPrice, 0);
+
+    await token.connect(agent).approve(taskMarket.target, requiredBond);
+    await taskMarket.connect(agent).fundSellerBond(2, requiredBond);
+
+    const agentBalanceBefore = await token.balanceOf(agent.address);
+
+    await expect(
+      taskMarket.connect(other).sellerCancelQuote(2),
+    ).to.be.revertedWith('TaskMarket: not authorized');
+
+    await expect(taskMarket.connect(agent).sellerCancelQuote(2))
+      .to.emit(taskMarket, 'TaskCancelled')
+      .withArgs(2)
+      .and.to.emit(taskMarket, 'SellerCancelledQuote')
+      .withArgs(2, requiredBond);
+
+    const agentBalanceAfter = await token.balanceOf(agent.address);
+    expect(agentBalanceAfter - agentBalanceBefore).to.equal(requiredBond);
+
+    const task = await taskMarket.getTask(2);
+    expect(task.status).to.equal(6);
+    expect(task.sellerBond).to.equal(0n);
+    expect(task.bondFunder).to.equal(agent.address);
+    expect(task.quotedUnits).to.equal(0);
+    expect(task.quotedTotalPrice).to.equal(0n);
+    expect(task.quoteExpiry).to.equal(0);
+
+    await expect(
+      taskMarket.connect(agent).sellerCancelQuote(2),
+    ).to.be.revertedWith('TaskMarket: not quoted');
+  });
+
+  it('blocks opening dispute after challenge window expires', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
+      await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { challengeWindowSec: 3600 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 1);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    await time.increase(policy.challengeWindowSec);
+
+    await expect(
+      disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-expired'),
+    ).to.be.revertedWith('DisputeModule: challenge window expired');
+
+    await expect(
+      taskMarket
+        .connect(buyer)
+        .disputeSubmission(1, 'ipfs://dispute-expired-via-market'),
+    ).to.be.revertedWith('DisputeModule: challenge window expired');
+  });
+
+  it('refunds bond to operator when operator funds bond and buyer cancels task', async function () {
+    const {
+      buyer,
+      agent,
+      operator,
+      identity,
+      listingRegistry,
+      taskMarket,
+      token,
+    } = await deployFixture();
+    const { pricing, policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: true },
+      { sellerBondBps: 2000 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+    await token.mint(operator.address, 10_000n);
+
+    await identity.connect(agent).approve(operator.address, 1);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 3);
+    const quotedTotalPrice = pricing.basePrice + 3n * pricing.unitPrice;
+    await taskMarket.connect(agent).proposeQuote(1, 3, quotedTotalPrice, 0);
+
+    const requiredBond =
+      (quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+
+    await token.connect(operator).approve(taskMarket.target, requiredBond);
+    await taskMarket.connect(operator).fundSellerBond(1, requiredBond);
+
+    const task = await taskMarket.getTask(1);
+    expect(task.bondFunder).to.equal(operator.address);
+
+    const operatorBalanceBefore = await token.balanceOf(operator.address);
+    const agentBalanceBefore = await token.balanceOf(agent.address);
+
+    await taskMarket.connect(buyer).cancelTask(1);
+
+    const operatorBalanceAfter = await token.balanceOf(operator.address);
+    const agentBalanceAfter = await token.balanceOf(agent.address);
+
+    expect(operatorBalanceAfter - operatorBalanceBefore).to.equal(requiredBond);
+    expect(agentBalanceAfter - agentBalanceBefore).to.equal(0n);
+
+    const cancelled = await taskMarket.getTask(1);
+    expect(cancelled.status).to.equal(6);
   });
 });

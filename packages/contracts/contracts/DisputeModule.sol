@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+
 interface ITaskMarket {
     enum TaskStatus {
         OPEN,
@@ -24,6 +26,7 @@ interface ITaskMarket {
         uint256 listingId;
         uint256 agentId;
         address buyer;
+        address seller;
         address paymentToken;
         string taskURI;
         uint32 proposedUnits;
@@ -32,21 +35,48 @@ interface ITaskMarket {
         uint64 quoteExpiry;
         uint256 fundedAmount;
         uint256 sellerBond;
+        address bondFunder;
         string artifactURI;
         bytes32 artifactHash;
+        uint64 activatedAt;
         uint64 submittedAt;
+        uint64 disputedAt;
         TaskStatus status;
         bool settled;
     }
 
     function getTask(uint256 taskId) external view returns (Task memory);
+    function listingRegistry() external view returns (address);
 
     function markDisputed(uint256 taskId, string calldata disputeURI) external;
 
     function resolveDispute(uint256 taskId, DisputeOutcome outcome, string calldata resolutionURI) external;
 }
 
-contract DisputeModule {
+interface IListingRegistry {
+    struct Pricing {
+        address paymentToken;
+        uint256 basePrice;
+        bytes32 unitType;
+        uint256 unitPrice;
+        uint32 minUnits;
+        uint32 maxUnits;
+        bool quoteRequired;
+    }
+
+    struct Policy {
+        uint32 challengeWindowSec;
+        uint32 postDisputeWindowSec;
+        uint32 deliveryWindowSec;
+        uint16 sellerBondBps;
+    }
+
+    function getListing(
+        uint256 listingId
+    ) external view returns (uint256 agentId, string memory listingURI, Pricing memory pricing, Policy memory policy, bool active);
+}
+
+contract DisputeModule is Ownable2Step {
     struct DisputeRecord {
         address buyer;
         bool opened;
@@ -65,17 +95,9 @@ contract DisputeModule {
     );
     event ResolverUpdated(address indexed resolver, bool allowed);
 
-    address public owner;
     ITaskMarket public immutable taskMarket;
     mapping(address => bool) public resolvers;
     mapping(uint256 => DisputeRecord) public disputes;
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) {
-            revert("DisputeModule: owner only");
-        }
-        _;
-    }
 
     modifier onlyResolver() {
         if (!resolvers[msg.sender]) {
@@ -84,11 +106,10 @@ contract DisputeModule {
         _;
     }
 
-    constructor(address taskMarket_, address[] memory initialResolvers) {
+    constructor(address taskMarket_, address[] memory initialResolvers) Ownable(msg.sender) {
         if (taskMarket_ == address(0)) {
             revert("DisputeModule: zero task market");
         }
-        owner = msg.sender;
         taskMarket = ITaskMarket(taskMarket_);
         for (uint256 i = 0; i < initialResolvers.length; i++) {
             resolvers[initialResolvers[i]] = true;
@@ -112,6 +133,12 @@ contract DisputeModule {
         }
         if (msg.sender != address(taskMarket) && task.buyer != msg.sender) {
             revert("DisputeModule: buyer only");
+        }
+
+        (, , , IListingRegistry.Policy memory policy, ) = IListingRegistry(taskMarket.listingRegistry()).getListing(task.listingId);
+        uint256 deadline = uint256(task.submittedAt) + uint256(policy.challengeWindowSec);
+        if (block.timestamp >= deadline) {
+            revert("DisputeModule: challenge window expired");
         }
 
         record.opened = true;
