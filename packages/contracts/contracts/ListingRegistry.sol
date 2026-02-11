@@ -11,6 +11,8 @@ interface IAgentIdentityRegistry {
 
 contract ListingRegistry {
     struct Pricing {
+        // Must be a standard ERC20 with exact transfer semantics.
+        // Fee-on-transfer / deflationary tokens are unsupported by TaskMarket escrow.
         address paymentToken;
         uint256 basePrice;
         bytes32 unitType;

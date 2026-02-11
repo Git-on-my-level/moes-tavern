@@ -643,6 +643,60 @@ describe('TaskMarket', function () {
     expect(task.sellerBond).to.equal(requiredBond);
   });
 
+  it('rejects fundTask when payment token is fee-on-transfer', async function () {
+    const { buyer, agent, listingRegistry, taskMarket } = await deployFixture();
+    const FeeOnTransferERC20 = await ethers.getContractFactory(
+      'FeeOnTransferERC20',
+    );
+    const feeToken = await FeeOnTransferERC20.deploy('Fee USD', 'fUSD', 100);
+    const { pricing } = await createListing(
+      listingRegistry,
+      agent,
+      feeToken.target,
+      { quoteRequired: true },
+    );
+
+    await feeToken.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 5);
+    const quotedTotalPrice = pricing.basePrice + 5n * pricing.unitPrice;
+    await taskMarket.connect(agent).proposeQuote(1, 5, quotedTotalPrice, 0);
+
+    await feeToken.connect(buyer).approve(taskMarket.target, quotedTotalPrice);
+    await expect(
+      taskMarket.connect(buyer).fundTask(1, quotedTotalPrice),
+    ).to.be.revertedWith('TaskMarket: fee-on-transfer unsupported');
+  });
+
+  it('rejects fundSellerBond when payment token is fee-on-transfer', async function () {
+    const { buyer, agent, listingRegistry, taskMarket } = await deployFixture();
+    const FeeOnTransferERC20 = await ethers.getContractFactory(
+      'FeeOnTransferERC20',
+    );
+    const feeToken = await FeeOnTransferERC20.deploy('Fee USD', 'fUSD', 5000);
+    const { pricing, policy } = await createListing(
+      listingRegistry,
+      agent,
+      feeToken.target,
+      { quoteRequired: true },
+      { sellerBondBps: 2000 },
+    );
+
+    await feeToken.mint(buyer.address, 10_000n);
+    await feeToken.mint(agent.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 5);
+    const quotedTotalPrice = pricing.basePrice + 5n * pricing.unitPrice;
+    await taskMarket.connect(agent).proposeQuote(1, 5, quotedTotalPrice, 0);
+
+    const requiredBond =
+      (quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+    await feeToken.connect(agent).approve(taskMarket.target, requiredBond);
+    await expect(
+      taskMarket.connect(agent).fundSellerBond(1, requiredBond),
+    ).to.be.revertedWith('TaskMarket: fee-on-transfer unsupported');
+  });
+
   it('refunds escrow and seller bond to bond funder on cancellation in QUOTED', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();

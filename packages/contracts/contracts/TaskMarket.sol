@@ -251,9 +251,9 @@ contract TaskMarket is ReentrancyGuard {
         if (amount != requiredBond) {
             revert("TaskMarket: bond amount mismatch");
         }
+        _safeTransferInExact(task.paymentToken, msg.sender, amount);
         task.sellerBond = amount;
         task.bondFunder = msg.sender;
-        IERC20(task.paymentToken).safeTransferFrom(msg.sender, address(this), amount);
 
         emit SellerBondFunded(taskId, amount);
     }
@@ -303,8 +303,8 @@ contract TaskMarket is ReentrancyGuard {
         if (task.quoteExpiry != 0 && block.timestamp > task.quoteExpiry) {
             revert("TaskMarket: quote expired");
         }
+        _safeTransferInExact(task.paymentToken, msg.sender, amount);
         task.fundedAmount = amount;
-        IERC20(task.paymentToken).safeTransferFrom(msg.sender, address(this), amount);
 
         emit TaskFunded(taskId, amount);
     }
@@ -570,5 +570,14 @@ contract TaskMarket is ReentrancyGuard {
             return 0;
         }
         return (task.quotedTotalPrice * uint256(policy.sellerBondBps)) / 10_000;
+    }
+
+    function _safeTransferInExact(address token, address from, uint256 amount) internal {
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+        IERC20(token).safeTransferFrom(from, address(this), amount);
+        uint256 balanceAfter = IERC20(token).balanceOf(address(this));
+        if (balanceAfter < balanceBefore || (balanceAfter - balanceBefore) != amount) {
+            revert("TaskMarket: fee-on-transfer unsupported");
+        }
     }
 }
