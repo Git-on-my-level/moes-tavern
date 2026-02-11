@@ -150,6 +150,7 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
 
     IListingRegistry public immutable listingRegistry;
     IAgentIdentityRegistry public immutable identityRegistry;
+    uint64 public constant DISPUTE_MODULE_UPDATE_DELAY = 1 days;
     address public disputeModule;
     address public pendingDisputeModule;
     uint64 public pendingDisputeModuleActivationTime;

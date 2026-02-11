@@ -129,7 +129,11 @@ contract DisputeModule is Ownable2Step {
         if (record.opened) {
             revert("DisputeModule: already opened");
         }
-        (ITaskMarket.TaskStatus status, , address buyer, , ) = taskMarket.getTaskState(taskId);
+        ITaskMarket.TaskStatus status;
+        uint256 listingId;
+        address buyer;
+        uint64 submittedAt;
+        (status, listingId, buyer, submittedAt, ) = taskMarket.getTaskState(taskId);
         if (status != ITaskMarket.TaskStatus.SUBMITTED) {
             revert("DisputeModule: not submitted");
         }
@@ -137,8 +141,10 @@ contract DisputeModule is Ownable2Step {
             revert("DisputeModule: buyer only");
         }
 
-        (, , , IListingRegistry.Policy memory policy, ) = IListingRegistry(taskMarket.listingRegistry()).getListing(task.listingId);
-        uint256 deadline = uint256(task.submittedAt) + uint256(policy.challengeWindowSec);
+        (, , , IListingRegistry.Policy memory policy, ) = IListingRegistry(taskMarket.listingRegistry()).getListing(
+            listingId
+        );
+        uint256 deadline = uint256(submittedAt) + uint256(policy.challengeWindowSec);
         if (block.timestamp >= deadline) {
             revert("DisputeModule: challenge window expired");
         }
@@ -159,8 +165,15 @@ contract DisputeModule is Ownable2Step {
         string calldata resolutionURI
     ) external onlyResolver {
         DisputeRecord storage record = disputes[taskId];
+        (ITaskMarket.TaskStatus status, , address buyer, , ) = taskMarket.getTaskState(taskId);
+
         if (!record.opened) {
-            revert("DisputeModule: not opened");
+            if (status != ITaskMarket.TaskStatus.DISPUTED) {
+                revert("DisputeModule: not opened");
+            }
+            record.opened = true;
+            record.buyer = buyer;
+            record.outcome = ITaskMarket.DisputeOutcome.SELLER_WINS;
         }
         if (record.resolved) {
             revert("DisputeModule: already resolved");

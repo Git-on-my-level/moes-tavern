@@ -455,6 +455,61 @@ describe('TaskMarket', function () {
     ).to.be.revertedWith('DisputeModule: resolver only');
   });
 
+  it('resolves an in-flight dispute after dispute module upgrade', async function () {
+    const { owner, buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target, {
+      quoteRequired: false,
+    });
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const quotedTask = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, quotedTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, quotedTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    await disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-upgrade');
+    expect((await taskMarket.getTask(1)).status).to.equal(4);
+
+    const DisputeModule = await ethers.getContractFactory('DisputeModule');
+    const disputeModuleV2 = await DisputeModule.deploy(taskMarket.target, []);
+    await disputeModuleV2.connect(owner).setResolver(owner.address, true);
+
+    await taskMarket
+      .connect(owner)
+      .scheduleDisputeModuleUpdate(disputeModuleV2.target);
+    const delay = await taskMarket.DISPUTE_MODULE_UPDATE_DELAY();
+    await time.increase(Number(delay) + 1);
+    await taskMarket.connect(owner).executeDisputeModuleUpdate();
+
+    const buyerBefore = await token.balanceOf(buyer.address);
+    const agentBefore = await token.balanceOf(agent.address);
+
+    await disputeModuleV2
+      .connect(owner)
+      .resolveDispute(1, 1, 'ipfs://resolution-upgrade');
+
+    const buyerAfter = await token.balanceOf(buyer.address);
+    const agentAfter = await token.balanceOf(agent.address);
+    const settledTask = await taskMarket.getTask(1);
+    const disputeRecord = await disputeModuleV2.disputes(1);
+
+    expect(settledTask.status).to.equal(5);
+    expect(disputeRecord.opened).to.equal(true);
+    expect(disputeRecord.buyer).to.equal(buyer.address);
+    expect(buyerAfter - buyerBefore).to.equal(quotedTask.quotedTotalPrice);
+    expect(agentAfter - agentBefore).to.equal(0n);
+  });
+
   it('emits correct buyer in DisputeOpened event when opened via TaskMarket', async function () {
     const { buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
       await deployFixture();
