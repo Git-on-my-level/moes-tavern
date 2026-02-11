@@ -19,6 +19,7 @@ interface IListingRegistry {
     struct Policy {
         uint32 challengeWindowSec;
         uint32 postDisputeWindowSec;
+        uint32 deliveryWindowSec;
         uint16 sellerBondBps;
     }
 
@@ -73,6 +74,7 @@ contract TaskMarket is ReentrancyGuard {
         uint256 sellerBond;
         string artifactURI;
         bytes32 artifactHash;
+        uint64 activatedAt;
         uint64 submittedAt;
         TaskStatus status;
         bool settled;
@@ -103,6 +105,11 @@ contract TaskMarket is ReentrancyGuard {
     event SellerBondFunded(uint256 indexed taskId, uint256 amount);
     event TaskSettled(uint256 indexed taskId, uint256 buyerPayout, uint256 sellerBondRefund);
     event TaskCancelled(uint256 indexed taskId);
+    event TaskCancelledForNonDelivery(
+        uint256 indexed taskId,
+        uint256 escrowRefund,
+        uint256 sellerBondPenalty
+    );
 
     IListingRegistry public immutable listingRegistry;
     IAgentIdentityRegistry public immutable identityRegistry;
@@ -216,6 +223,7 @@ contract TaskMarket is ReentrancyGuard {
             revert("TaskMarket: bond not funded");
         }
         task.status = TaskStatus.ACTIVE;
+        task.activatedAt = uint64(block.timestamp);
 
         emit QuoteAccepted(taskId);
     }
@@ -410,6 +418,39 @@ contract TaskMarket is ReentrancyGuard {
         }
 
         emit TaskCancelled(taskId);
+    }
+
+    function cancelForNonDelivery(uint256 taskId) external nonReentrant {
+        Task storage task = _getTaskOrRevert(taskId);
+        if (task.buyer != msg.sender) {
+            revert("TaskMarket: buyer only");
+        }
+        if (task.status != TaskStatus.ACTIVE) {
+            revert("TaskMarket: not active");
+        }
+        if (task.fundedAmount == 0) {
+            revert("TaskMarket: not funded");
+        }
+        if (task.submittedAt != 0) {
+            revert("TaskMarket: already submitted");
+        }
+        (, , , IListingRegistry.Policy memory policy, ) = listingRegistry.getListing(task.listingId);
+        uint256 deadline = uint256(task.activatedAt) + uint256(policy.deliveryWindowSec);
+        if (block.timestamp < deadline) {
+            revert("TaskMarket: delivery window");
+        }
+
+        uint256 escrowRefund = task.fundedAmount;
+        uint256 sellerBondPenalty = task.sellerBond;
+        task.fundedAmount = 0;
+        task.sellerBond = 0;
+        task.status = TaskStatus.CANCELLED;
+        task.settled = true;
+
+        IERC20(task.paymentToken).safeTransfer(task.buyer, escrowRefund + sellerBondPenalty);
+
+        emit TaskCancelled(taskId);
+        emit TaskCancelledForNonDelivery(taskId, escrowRefund, sellerBondPenalty);
     }
 
     function getTask(uint256 taskId) external view returns (Task memory) {

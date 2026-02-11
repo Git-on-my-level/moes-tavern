@@ -23,6 +23,7 @@ contract ListingRegistry {
     struct Policy {
         uint32 challengeWindowSec;
         uint32 postDisputeWindowSec;
+        uint32 deliveryWindowSec;
         uint16 sellerBondBps;
     }
 
@@ -47,6 +48,7 @@ contract ListingRegistry {
         bool quoteRequired,
         uint32 challengeWindowSec,
         uint32 postDisputeWindowSec,
+        uint32 deliveryWindowSec,
         uint16 sellerBondBps,
         bool active
     );
@@ -97,6 +99,9 @@ contract ListingRegistry {
         if (policy.challengeWindowSec == 0) {
             revert("ListingRegistry: challengeWindow must be positive");
         }
+        if (policy.deliveryWindowSec == 0) {
+            revert("ListingRegistry: deliveryWindow must be positive");
+        }
 
         listingId = _nextListingId++;
 
@@ -121,6 +126,7 @@ contract ListingRegistry {
             pricing.quoteRequired,
             policy.challengeWindowSec,
             policy.postDisputeWindowSec,
+            policy.deliveryWindowSec,
             policy.sellerBondBps,
             true
         );

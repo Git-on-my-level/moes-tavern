@@ -36,6 +36,7 @@ describe('ListingRegistry', function () {
     return {
       challengeWindowSec: 3600,
       postDisputeWindowSec: 7200,
+      deliveryWindowSec: 86400,
       sellerBondBps: 250,
     };
   }
@@ -70,6 +71,7 @@ describe('ListingRegistry', function () {
         pricing.quoteRequired,
         policy.challengeWindowSec,
         policy.postDisputeWindowSec,
+        policy.deliveryWindowSec,
         policy.sellerBondBps,
         true,
       );
@@ -95,7 +97,8 @@ describe('ListingRegistry', function () {
 
     expect(storedPolicy[0]).to.equal(policy.challengeWindowSec);
     expect(storedPolicy[1]).to.equal(policy.postDisputeWindowSec);
-    expect(storedPolicy[2]).to.equal(policy.sellerBondBps);
+    expect(storedPolicy[2]).to.equal(policy.deliveryWindowSec);
+    expect(storedPolicy[3]).to.equal(policy.sellerBondBps);
 
     expect(await identity.ownerOf(1)).to.equal(owner.address);
   });
@@ -227,5 +230,19 @@ describe('ListingRegistry', function () {
     await expect(
       listingRegistry.createListing(1, LISTING_URI, pricing, policy),
     ).to.be.revertedWith('ListingRegistry: challengeWindow must be positive');
+  });
+
+  it('rejects zero deliveryWindow', async function () {
+    const { identity, listingRegistry, paymentToken } = await deployFixture();
+
+    await identity.registerAgent('ipfs://agent-1');
+
+    const pricing = getPricing(paymentToken.target);
+    const policy = getPolicy();
+    policy.deliveryWindowSec = 0;
+
+    await expect(
+      listingRegistry.createListing(1, LISTING_URI, pricing, policy),
+    ).to.be.revertedWith('ListingRegistry: deliveryWindow must be positive');
   });
 });

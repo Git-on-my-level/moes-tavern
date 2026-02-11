@@ -34,6 +34,7 @@ interface ITaskMarket {
         uint256 sellerBond;
         string artifactURI;
         bytes32 artifactHash;
+        uint64 activatedAt;
         uint64 submittedAt;
         TaskStatus status;
         bool settled;
