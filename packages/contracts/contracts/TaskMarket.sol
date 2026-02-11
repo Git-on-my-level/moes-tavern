@@ -18,6 +18,7 @@ interface IListingRegistry {
 
     struct Policy {
         uint32 challengeWindowSec;
+        // If non-zero, DISPUTED tasks may be permissionlessly settled after this window.
         uint32 postDisputeWindowSec;
         uint32 deliveryWindowSec;
         uint16 sellerBondBps;
@@ -76,6 +77,7 @@ contract TaskMarket is ReentrancyGuard {
         bytes32 artifactHash;
         uint64 activatedAt;
         uint64 submittedAt;
+        uint64 disputedAt;
         TaskStatus status;
         bool settled;
     }
@@ -102,6 +104,7 @@ contract TaskMarket is ReentrancyGuard {
     event DeliverableSubmitted(uint256 indexed taskId, string artifactURI, bytes32 artifactHash);
     event SubmissionAccepted(uint256 indexed taskId);
     event SubmissionDisputed(uint256 indexed taskId, string disputeURI);
+    event PostDisputeTimeoutSettled(uint256 indexed taskId, uint256 deadline, DisputeOutcome outcome);
     event SellerBondFunded(uint256 indexed taskId, uint256 amount);
     event TaskSettled(uint256 indexed taskId, uint256 buyerPayout, uint256 sellerBondRefund);
     event TaskCancelled(uint256 indexed taskId);
@@ -382,11 +385,30 @@ contract TaskMarket is ReentrancyGuard {
         _settle(task);
     }
 
+    function settleAfterPostDisputeTimeout(uint256 taskId) external nonReentrant {
+        Task storage task = _getTaskOrRevert(taskId);
+        if (task.status != TaskStatus.DISPUTED) {
+            revert("TaskMarket: not disputed");
+        }
+        (, , , IListingRegistry.Policy memory policy, ) = listingRegistry.getListing(task.listingId);
+        if (policy.postDisputeWindowSec == 0) {
+            revert("TaskMarket: post-dispute timeout disabled");
+        }
+        uint256 deadline = uint256(task.disputedAt) + uint256(policy.postDisputeWindowSec);
+        if (block.timestamp < deadline) {
+            revert("TaskMarket: post-dispute window");
+        }
+
+        _settle(task);
+        emit PostDisputeTimeoutSettled(taskId, deadline, DisputeOutcome.SELLER_WINS);
+    }
+
     function markDisputed(uint256 taskId, string calldata disputeURI) external onlyDisputeModule {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.status != TaskStatus.SUBMITTED) {
             revert("TaskMarket: not submitted");
         }
+        task.disputedAt = uint64(block.timestamp);
         task.status = TaskStatus.DISPUTED;
         emit SubmissionDisputed(taskId, disputeURI);
     }
@@ -520,10 +542,10 @@ contract TaskMarket is ReentrancyGuard {
     }
 
     function _requireAgentAuthorized(uint256 agentId) internal view {
-        address owner = identityRegistry.ownerOf(agentId);
+        address agentOwner = identityRegistry.ownerOf(agentId);
         if (
-            msg.sender != owner &&
-            !identityRegistry.isApprovedForAll(owner, msg.sender) &&
+            msg.sender != agentOwner &&
+            !identityRegistry.isApprovedForAll(agentOwner, msg.sender) &&
             identityRegistry.getApproved(agentId) != msg.sender
         ) {
             revert("TaskMarket: not authorized");

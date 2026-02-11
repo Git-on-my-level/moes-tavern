@@ -22,6 +22,7 @@ contract ListingRegistry {
 
     struct Policy {
         uint32 challengeWindowSec;
+        // If non-zero, DISPUTED tasks may be permissionlessly settled after this window.
         uint32 postDisputeWindowSec;
         uint32 deliveryWindowSec;
         uint16 sellerBondBps;

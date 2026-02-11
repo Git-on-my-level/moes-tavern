@@ -36,6 +36,7 @@ interface ITaskMarket {
         bytes32 artifactHash;
         uint64 activatedAt;
         uint64 submittedAt;
+        uint64 disputedAt;
         TaskStatus status;
         bool settled;
     }

@@ -433,6 +433,88 @@ describe('TaskMarket', function () {
     expect(agentEnd - agentStart).to.equal(0n);
   });
 
+  it('settles disputed tasks after post-dispute timeout with seller-win default', async function () {
+    const {
+      buyer,
+      agent,
+      listingRegistry,
+      taskMarket,
+      disputeModule,
+      token,
+      owner,
+    } = await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { postDisputeWindowSec: 300, sellerBondBps: 2500 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+    await token.mint(agent.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    const requiredBond =
+      (task.quotedTotalPrice * BigInt(policy.sellerBondBps)) / 10_000n;
+
+    await token.connect(agent).approve(taskMarket.target, requiredBond);
+    await taskMarket.connect(agent).fundSellerBond(1, requiredBond);
+
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+    await disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-timeout-1');
+
+    const disputed = await taskMarket.getTask(1);
+    expect(disputed.status).to.equal(4);
+    expect(disputed.disputedAt).to.not.equal(0n);
+
+    await expect(
+      taskMarket.connect(owner).settleAfterPostDisputeTimeout(1),
+    ).to.be.revertedWith('TaskMarket: post-dispute window');
+
+    await time.increase(policy.postDisputeWindowSec + 1);
+
+    const buyerStart = await token.balanceOf(buyer.address);
+    const agentStart = await token.balanceOf(agent.address);
+    const deadline = BigInt(disputed.disputedAt) + BigInt(policy.postDisputeWindowSec);
+
+    await expect(taskMarket.connect(owner).settleAfterPostDisputeTimeout(1))
+      .to.emit(taskMarket, 'PostDisputeTimeoutSettled')
+      .withArgs(1, deadline, 0);
+
+    const settled = await taskMarket.getTask(1);
+    expect(settled.status).to.equal(5);
+    expect(settled.settled).to.equal(true);
+
+    const buyerEnd = await token.balanceOf(buyer.address);
+    const agentEnd = await token.balanceOf(agent.address);
+
+    expect(buyerEnd - buyerStart).to.equal(0n);
+    expect(agentEnd - agentStart).to.equal(task.quotedTotalPrice + requiredBond);
+
+    await disputeModule.connect(owner).setResolver(owner.address, true);
+    await expect(
+      disputeModule.connect(owner).resolveDispute(1, 1, 'ipfs://resolution-timeout-1'),
+    ).to.be.revertedWith('TaskMarket: not disputed');
+    await expect(
+      taskMarket.connect(owner).settleAfterPostDisputeTimeout(1),
+    ).to.be.revertedWith('TaskMarket: not disputed');
+    await expect(taskMarket.connect(owner).settleAfterTimeout(1)).to.be.revertedWith(
+      'TaskMarket: not submitted',
+    );
+  });
+
   it('allows acceptQuote after expiry when funded before expiry', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();
