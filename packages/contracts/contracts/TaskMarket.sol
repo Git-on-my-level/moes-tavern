@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 interface IListingRegistry {
     struct Pricing {
         address paymentToken;
@@ -31,17 +35,12 @@ interface IAgentIdentityRegistry {
     function isApprovedForAll(address owner, address operator) external view returns (bool);
 }
 
-interface IERC20Minimal {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-
-    function transfer(address recipient, uint256 amount) external returns (bool);
-}
-
 interface IDisputeModule {
     function openDispute(uint256 taskId, string calldata disputeURI) external;
 }
 
-contract TaskMarket {
+contract TaskMarket is ReentrancyGuard {
+    using SafeERC20 for IERC20;
     enum TaskStatus {
         OPEN,
         QUOTED,
@@ -221,7 +220,7 @@ contract TaskMarket {
         emit QuoteAccepted(taskId);
     }
 
-    function fundSellerBond(uint256 taskId, uint256 amount) external {
+    function fundSellerBond(uint256 taskId, uint256 amount) external nonReentrant {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.status != TaskStatus.QUOTED) {
             revert("TaskMarket: not quoted");
@@ -238,14 +237,12 @@ contract TaskMarket {
             revert("TaskMarket: bond amount mismatch");
         }
         task.sellerBond = amount;
-        if (!IERC20Minimal(task.paymentToken).transferFrom(msg.sender, address(this), amount)) {
-            revert("TaskMarket: bond transfer failed");
-        }
+        IERC20(task.paymentToken).safeTransferFrom(msg.sender, address(this), amount);
 
         emit SellerBondFunded(taskId, amount);
     }
 
-    function fundTask(uint256 taskId, uint256 amount) external {
+    function fundTask(uint256 taskId, uint256 amount) external nonReentrant {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.buyer != msg.sender) {
             revert("TaskMarket: buyer only");
@@ -269,9 +266,7 @@ contract TaskMarket {
             revert("TaskMarket: quote expired");
         }
         task.fundedAmount = amount;
-        if (!IERC20Minimal(task.paymentToken).transferFrom(msg.sender, address(this), amount)) {
-            revert("TaskMarket: transfer failed");
-        }
+        IERC20(task.paymentToken).safeTransferFrom(msg.sender, address(this), amount);
 
         emit TaskFunded(taskId, amount);
     }
@@ -317,7 +312,7 @@ contract TaskMarket {
         emit DeliverableSubmitted(taskId, artifactURI, artifactHash);
     }
 
-    function acceptSubmission(uint256 taskId) external {
+    function acceptSubmission(uint256 taskId) external nonReentrant {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.status != TaskStatus.SUBMITTED) {
             revert("TaskMarket: not submitted");
@@ -343,7 +338,7 @@ contract TaskMarket {
         IDisputeModule(disputeModule).openDispute(taskId, disputeURI);
     }
 
-    function settleAfterTimeout(uint256 taskId) external {
+    function settleAfterTimeout(uint256 taskId) external nonReentrant {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.status != TaskStatus.SUBMITTED) {
             revert("TaskMarket: not submitted");
@@ -369,7 +364,7 @@ contract TaskMarket {
         uint256 taskId,
         DisputeOutcome outcome,
         string calldata
-    ) external onlyDisputeModule {
+    ) external onlyDisputeModule nonReentrant {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.status != TaskStatus.DISPUTED) {
             revert("TaskMarket: not disputed");
@@ -394,7 +389,7 @@ contract TaskMarket {
         _settleWithPayouts(task, buyerEscrowPayout, buyerBondPayout);
     }
 
-    function cancelTask(uint256 taskId) external {
+    function cancelTask(uint256 taskId) external nonReentrant {
         Task storage task = _getTaskOrRevert(taskId);
         if (task.buyer != msg.sender) {
             revert("TaskMarket: buyer only");
@@ -406,16 +401,12 @@ contract TaskMarket {
         if (task.fundedAmount != 0) {
             uint256 refund = task.fundedAmount;
             task.fundedAmount = 0;
-            if (!IERC20Minimal(task.paymentToken).transfer(task.buyer, refund)) {
-                revert("TaskMarket: escrow refund failed");
-            }
+            IERC20(task.paymentToken).safeTransfer(task.buyer, refund);
         }
         if (task.sellerBond != 0) {
             uint256 refund = task.sellerBond;
             task.sellerBond = 0;
-            if (!IERC20Minimal(task.paymentToken).transfer(_agentOwner(task.agentId), refund)) {
-                revert("TaskMarket: bond refund failed");
-            }
+            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), refund);
         }
 
         emit TaskCancelled(taskId);
@@ -448,14 +439,10 @@ contract TaskMarket {
         uint256 sellerTotal = sellerEscrowPayout + sellerBondRefund;
 
         if (buyerTotal > 0) {
-            if (!IERC20Minimal(task.paymentToken).transfer(task.buyer, buyerTotal)) {
-                revert("TaskMarket: buyer payout failed");
-            }
+            IERC20(task.paymentToken).safeTransfer(task.buyer, buyerTotal);
         }
         if (sellerTotal > 0) {
-            if (!IERC20Minimal(task.paymentToken).transfer(_agentOwner(task.agentId), sellerTotal)) {
-                revert("TaskMarket: payout failed");
-            }
+            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), sellerTotal);
         }
 
         emit TaskSettled(task.id, buyerTotal, sellerBondRefund);
