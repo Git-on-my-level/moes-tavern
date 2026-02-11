@@ -23,7 +23,6 @@ interface IListingRegistry {
         uint32 postDisputeWindowSec;
         uint32 deliveryWindowSec;
         uint16 sellerBondBps;
-        uint32 deliveryWindowSec;
     }
 
     function getListing(

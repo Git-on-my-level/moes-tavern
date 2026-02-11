@@ -492,9 +492,7 @@ describe('TaskMarket', function () {
     const disputeModuleV2 = await DisputeModule.deploy(taskMarket.target, []);
     await disputeModuleV2.connect(owner).setResolver(owner.address, true);
 
-    await taskMarket
-      .connect(owner)
-      .scheduleDisputeModuleUpdate(disputeModuleV2.target);
+    await taskMarket.connect(owner).setDisputeModule(disputeModuleV2.target);
     const delay = await taskMarket.DISPUTE_MODULE_UPDATE_DELAY();
     await time.increase(Number(delay) + 1);
     await taskMarket.connect(owner).executeDisputeModuleUpdate();
