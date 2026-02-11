@@ -121,7 +121,7 @@ contract DisputeModule {
 
         taskMarket.markDisputed(taskId, disputeURI);
 
-        emit DisputeOpened(taskId, msg.sender, disputeURI);
+        emit DisputeOpened(taskId, task.buyer, disputeURI);
     }
 
     function resolveDispute(

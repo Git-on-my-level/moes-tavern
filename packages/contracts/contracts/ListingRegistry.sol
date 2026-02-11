@@ -78,6 +78,26 @@ contract ListingRegistry {
         Policy calldata policy
     ) external returns (uint256 listingId) {
         _requireAuthorized(agentId);
+
+        if (pricing.paymentToken == address(0)) {
+            revert("ListingRegistry: zero payment token");
+        }
+        if (pricing.maxUnits == 0) {
+            revert("ListingRegistry: maxUnits must be positive");
+        }
+        if (pricing.minUnits == 0) {
+            revert("ListingRegistry: minUnits must be positive");
+        }
+        if (pricing.minUnits > pricing.maxUnits) {
+            revert("ListingRegistry: minUnits greater than maxUnits");
+        }
+        if (policy.sellerBondBps > 10_000) {
+            revert("ListingRegistry: sellerBondBps exceeds 10000");
+        }
+        if (policy.challengeWindowSec == 0) {
+            revert("ListingRegistry: challengeWindow must be positive");
+        }
+
         listingId = _nextListingId++;
 
         Listing storage listing = _listings[listingId];

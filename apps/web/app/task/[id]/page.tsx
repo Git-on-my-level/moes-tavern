@@ -99,7 +99,16 @@ export default function TaskPage({ params }: { params: { id: string } }) {
             <>
               <dt style={{ fontWeight: 'bold' }}>Quote Expires In:</dt>
               <dd>
-                {Math.max(0, Math.ceil((task.quoteExpiry - Date.now()) / 1000))}
+                {Math.max(
+                  0,
+                  Math.ceil(
+                    ((task.quoteExpiry < 10 ** 12
+                      ? task.quoteExpiry * 1000
+                      : task.quoteExpiry) -
+                      Date.now()) /
+                      1000,
+                  ),
+                )}
                 s
               </dd>
             </>

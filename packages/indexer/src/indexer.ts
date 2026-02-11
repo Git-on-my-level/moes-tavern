@@ -1,4 +1,4 @@
-import fs from "node:fs/promises";
+import fs from 'node:fs/promises';
 
 export type ChainEventBase = {
   blockNumber: number;
@@ -7,7 +7,7 @@ export type ChainEventBase = {
 };
 
 export type ListingCreatedEvent = ChainEventBase & {
-  type: "ListingCreated";
+  type: 'ListingCreated';
   listingId: number;
   agentId: number;
   listingURI: string;
@@ -29,7 +29,7 @@ export type ListingCreatedEvent = ChainEventBase & {
 };
 
 export type ListingUpdatedEvent = ChainEventBase & {
-  type: "ListingUpdated";
+  type: 'ListingUpdated';
   listingId: number;
   agentId: number;
   listingURI: string;
@@ -37,7 +37,7 @@ export type ListingUpdatedEvent = ChainEventBase & {
 };
 
 export type TaskPostedEvent = ChainEventBase & {
-  type: "TaskPosted";
+  type: 'TaskPosted';
   taskId: number;
   listingId: number;
   agentId: number;
@@ -47,7 +47,7 @@ export type TaskPostedEvent = ChainEventBase & {
 };
 
 export type QuoteProposedEvent = ChainEventBase & {
-  type: "QuoteProposed";
+  type: 'QuoteProposed';
   taskId: number;
   quotedUnits: number;
   quotedTotalPrice: number;
@@ -55,69 +55,69 @@ export type QuoteProposedEvent = ChainEventBase & {
 };
 
 export type QuoteAcceptedEvent = ChainEventBase & {
-  type: "QuoteAccepted";
+  type: 'QuoteAccepted';
   taskId: number;
 };
 
 export type TaskFundedEvent = ChainEventBase & {
-  type: "TaskFunded";
+  type: 'TaskFunded';
   taskId: number;
   amount: number;
 };
 
 export type TaskAcceptedEvent = ChainEventBase & {
-  type: "TaskAccepted";
+  type: 'TaskAccepted';
   taskId: number;
 };
 
 export type DeliverableSubmittedEvent = ChainEventBase & {
-  type: "DeliverableSubmitted";
+  type: 'DeliverableSubmitted';
   taskId: number;
   artifactURI: string;
   artifactHash: string;
 };
 
 export type SubmissionAcceptedEvent = ChainEventBase & {
-  type: "SubmissionAccepted";
+  type: 'SubmissionAccepted';
   taskId: number;
 };
 
 export type SubmissionDisputedEvent = ChainEventBase & {
-  type: "SubmissionDisputed";
+  type: 'SubmissionDisputed';
   taskId: number;
   disputeURI: string;
 };
 
 export type SellerBondFundedEvent = ChainEventBase & {
-  type: "SellerBondFunded";
+  type: 'SellerBondFunded';
   taskId: number;
   amount: number;
 };
 
 export type TaskSettledEvent = ChainEventBase & {
-  type: "TaskSettled";
+  type: 'TaskSettled';
   taskId: number;
   buyerPayout: number;
   sellerBondRefund: number;
 };
 
 export type TaskCancelledEvent = ChainEventBase & {
-  type: "TaskCancelled";
+  type: 'TaskCancelled';
   taskId: number;
 };
 
 export type DisputeOpenedEvent = ChainEventBase & {
-  type: "DisputeOpened";
+  type: 'DisputeOpened';
   taskId: number;
   buyer: string;
   disputeURI: string;
 };
 
 export type DisputeResolvedEvent = ChainEventBase & {
-  type: "DisputeResolved";
+  type: 'DisputeResolved';
   taskId: number;
   resolver: string;
-  outcome: "SELLER_WINS" | "BUYER_WINS" | "SPLIT" | "CANCEL";
+  outcome: 'SELLER_WINS' | 'BUYER_WINS' | 'SPLIT' | 'CANCEL';
   resolutionURI: string;
 };
 
@@ -141,8 +141,8 @@ export type ListingRecord = {
   listingId: number;
   agentId: number;
   listingURI: string;
-  pricing: ListingCreatedEvent["pricing"] | null;
-  policy: ListingCreatedEvent["policy"] | null;
+  pricing: ListingCreatedEvent['pricing'] | null;
+  policy: ListingCreatedEvent['policy'] | null;
   active: boolean;
   createdAt: number | null;
   updatedAt: number | null;
@@ -187,7 +187,14 @@ export type TaskRecord = {
   sellerBond: number | null;
   artifactURI: string | null;
   artifactHash: string | null;
-  status: "OPEN" | "QUOTED" | "ACTIVE" | "SUBMITTED" | "DISPUTED" | "SETTLED" | "CANCELLED";
+  status:
+    | 'OPEN'
+    | 'QUOTED'
+    | 'ACTIVE'
+    | 'SUBMITTED'
+    | 'DISPUTED'
+    | 'SETTLED'
+    | 'CANCELLED';
   postedAt: number | null;
   acceptedAt: number | null;
   submittedAt: number | null;
@@ -203,7 +210,7 @@ export type DisputeRecord = {
   disputeURI: string | null;
   openedAt: number | null;
   resolvedAt: number | null;
-  outcome: DisputeResolvedEvent["outcome"] | null;
+  outcome: DisputeResolvedEvent['outcome'] | null;
   resolutionURI: string | null;
 };
 
@@ -247,11 +254,15 @@ export class Indexer {
 
   async load() {
     if (!this.persistPath) return;
-    const data = await fs.readFile(this.persistPath, "utf8");
+    const data = await fs.readFile(this.persistPath, 'utf8');
     const parsed = JSON.parse(data) as PersistedState;
-    this.listings = new Map(parsed.listings.map((listing) => [listing.listingId, listing]));
+    this.listings = new Map(
+      parsed.listings.map((listing) => [listing.listingId, listing]),
+    );
     this.tasks = new Map(parsed.tasks.map((task) => [task.taskId, task]));
-    this.disputes = new Map(parsed.disputes.map((dispute) => [dispute.taskId, dispute]));
+    this.disputes = new Map(
+      parsed.disputes.map((dispute) => [dispute.taskId, dispute]),
+    );
   }
 
   async persist() {
@@ -259,7 +270,7 @@ export class Indexer {
     const payload: PersistedState = {
       listings: Array.from(this.listings.values()),
       tasks: Array.from(this.tasks.values()),
-      disputes: Array.from(this.disputes.values())
+      disputes: Array.from(this.disputes.values()),
     };
     await fs.writeFile(this.persistPath, JSON.stringify(payload, null, 2));
   }
@@ -271,9 +282,12 @@ export class Indexer {
     });
 
     for (const event of ordered) {
-      if (event.type === "ListingCreated" || event.type === "ListingUpdated") {
+      if (event.type === 'ListingCreated' || event.type === 'ListingUpdated') {
         this.applyListingEvent(event);
-      } else if (event.type === "DisputeOpened" || event.type === "DisputeResolved") {
+      } else if (
+        event.type === 'DisputeOpened' ||
+        event.type === 'DisputeResolved'
+      ) {
         this.applyDisputeEvent(event);
       } else {
         this.applyTaskEvent(event);
@@ -282,18 +296,28 @@ export class Indexer {
   }
 
   getAgentMetrics(agentId: number): AgentMetrics {
-    const tasks = Array.from(this.tasks.values()).filter((task) => task.agentId === agentId);
+    const tasks = Array.from(this.tasks.values()).filter(
+      (task) => task.agentId === agentId,
+    );
     const postedCount = tasks.filter((task) => task.postedAt !== null).length;
-    const acceptedCount = tasks.filter((task) => task.acceptedAt !== null).length;
-    const submittedCount = tasks.filter((task) => task.submittedAt !== null).length;
-    const disputeCount = tasks.filter((task) => task.disputedAt !== null).length;
+    const acceptedCount = tasks.filter(
+      (task) => task.acceptedAt !== null,
+    ).length;
+    const submittedCount = tasks.filter(
+      (task) => task.submittedAt !== null,
+    ).length;
+    const disputeCount = tasks.filter(
+      (task) => task.disputedAt !== null,
+    ).length;
     const settledCount = tasks.filter((task) => task.settledAt !== null).length;
-    const cancelCount = tasks.filter((task) => task.cancelledAt !== null).length;
+    const cancelCount = tasks.filter(
+      (task) => task.cancelledAt !== null,
+    ).length;
     const autoReleaseCount = tasks.filter(
       (task) =>
         task.settledAt !== null &&
         task.submissionAcceptedAt === null &&
-        task.disputedAt === null
+        task.disputedAt === null,
     ).length;
 
     const timeToSubmitValues = tasks
@@ -302,7 +326,8 @@ export class Indexer {
     const avgTimeToSubmitSec =
       timeToSubmitValues.length === 0
         ? 0
-        : timeToSubmitValues.reduce((sum, value) => sum + value, 0) / timeToSubmitValues.length;
+        : timeToSubmitValues.reduce((sum, value) => sum + value, 0) /
+          timeToSubmitValues.length;
 
     return {
       agentId,
@@ -316,15 +341,18 @@ export class Indexer {
       acceptRate: postedCount === 0 ? 0 : acceptedCount / postedCount,
       disputeRate: submittedCount === 0 ? 0 : disputeCount / submittedCount,
       cancelRate: postedCount === 0 ? 0 : cancelCount / postedCount,
-      silentAutoReleaseFrequency: settledCount === 0 ? 0 : autoReleaseCount / settledCount,
-      avgTimeToSubmitSec
+      silentAutoReleaseFrequency:
+        settledCount === 0 ? 0 : autoReleaseCount / settledCount,
+      avgTimeToSubmitSec,
     };
   }
 
   getListings(query: ListingQuery = {}): ListingRecord[] {
     let listings = Array.from(this.listings.values());
     if (query.agentId !== undefined) {
-      listings = listings.filter((listing) => listing.agentId === query.agentId);
+      listings = listings.filter(
+        (listing) => listing.agentId === query.agentId,
+      );
     }
     if (query.active !== undefined) {
       listings = listings.filter((listing) => listing.active === query.active);
@@ -343,7 +371,7 @@ export class Indexer {
   }
 
   private applyListingEvent(event: ListingEvent) {
-    if (event.type === "ListingCreated") {
+    if (event.type === 'ListingCreated') {
       this.listings.set(event.listingId, {
         listingId: event.listingId,
         agentId: event.agentId,
@@ -353,7 +381,7 @@ export class Indexer {
         active: event.active,
         createdAt: event.timestamp,
         updatedAt: event.timestamp,
-        curation: null
+        curation: null,
       });
       return;
     }
@@ -368,7 +396,7 @@ export class Indexer {
       active: event.active,
       createdAt: existing?.createdAt ?? null,
       updatedAt: event.timestamp,
-      curation: existing?.curation ?? null
+      curation: existing?.curation ?? null,
     });
   }
 
@@ -379,7 +407,7 @@ export class Indexer {
     }
     this.listings.set(listingId, {
       ...listing,
-      curation
+      curation,
     });
   }
 
@@ -387,54 +415,61 @@ export class Indexer {
     const task = this.ensureTask(event.taskId);
 
     switch (event.type) {
-      case "TaskPosted":
+      case 'TaskPosted':
         task.listingId = event.listingId;
         task.agentId = event.agentId;
         task.buyer = event.buyer;
         task.taskURI = event.taskURI;
         task.proposedUnits = event.proposedUnits;
-        task.status = "OPEN";
+        task.status = 'OPEN';
         task.postedAt = event.timestamp;
         break;
-      case "QuoteProposed":
+      case 'QuoteProposed':
         task.quotedUnits = event.quotedUnits;
         task.quotedTotalPrice = event.quotedTotalPrice;
         task.quoteExpiry = event.expiry;
-        task.status = "QUOTED";
+        task.status = 'QUOTED';
         break;
-      case "QuoteAccepted":
-        task.status = "ACTIVE";
+      case 'QuoteAccepted':
+        task.status = 'ACTIVE';
         task.acceptedAt = event.timestamp;
         break;
-      case "TaskFunded":
+      case 'TaskFunded':
         task.fundedAmount = event.amount;
         break;
-      case "TaskAccepted":
-        task.status = "ACTIVE";
-        task.acceptedAt = event.timestamp;
+      case 'TaskAccepted': {
+        task.status = 'QUOTED';
+        task.quotedUnits = task.proposedUnits;
+        const listing = this.listings.get(task.listingId ?? 0);
+        if (listing?.pricing) {
+          task.quotedTotalPrice =
+            listing.pricing.basePrice +
+            (task.proposedUnits ?? 0) * listing.pricing.unitPrice;
+        }
         break;
-      case "DeliverableSubmitted":
+      }
+      case 'DeliverableSubmitted':
         task.artifactURI = event.artifactURI;
         task.artifactHash = event.artifactHash;
-        task.status = "SUBMITTED";
+        task.status = 'SUBMITTED';
         task.submittedAt = event.timestamp;
         break;
-      case "SubmissionAccepted":
+      case 'SubmissionAccepted':
         task.submissionAcceptedAt = event.timestamp;
         break;
-      case "SubmissionDisputed":
+      case 'SubmissionDisputed':
         task.disputedAt = event.timestamp;
-        task.status = "DISPUTED";
+        task.status = 'DISPUTED';
         break;
-      case "SellerBondFunded":
+      case 'SellerBondFunded':
         task.sellerBond = event.amount;
         break;
-      case "TaskSettled":
-        task.status = "SETTLED";
+      case 'TaskSettled':
+        task.status = 'SETTLED';
         task.settledAt = event.timestamp;
         break;
-      case "TaskCancelled":
-        task.status = "CANCELLED";
+      case 'TaskCancelled':
+        task.status = 'CANCELLED';
         task.cancelledAt = event.timestamp;
         break;
       default: {
@@ -455,15 +490,15 @@ export class Indexer {
       openedAt: null,
       resolvedAt: null,
       outcome: null,
-      resolutionURI: null
+      resolutionURI: null,
     };
 
-    if (event.type === "DisputeOpened") {
+    if (event.type === 'DisputeOpened') {
       existing.buyer = event.buyer;
       existing.disputeURI = event.disputeURI;
       existing.openedAt = event.timestamp;
       task.disputedAt = event.timestamp;
-      task.status = "DISPUTED";
+      task.status = 'DISPUTED';
     } else {
       existing.resolvedAt = event.timestamp;
       existing.outcome = event.outcome;
@@ -491,14 +526,14 @@ export class Indexer {
       sellerBond: null,
       artifactURI: null,
       artifactHash: null,
-      status: "OPEN",
+      status: 'OPEN',
       postedAt: null,
       acceptedAt: null,
       submittedAt: null,
       submissionAcceptedAt: null,
       disputedAt: null,
       settledAt: null,
-      cancelledAt: null
+      cancelledAt: null,
     };
     this.tasks.set(taskId, task);
     return task;

@@ -1,8 +1,10 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   test:
@@ -15,6 +17,10 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Work around npm optional dependency issue (Rollup on Linux)
+        if: runner.os == 'Linux'
+        run: |
+          npm ls @rollup/rollup-linux-x64-gnu >/dev/null 2>&1 || npm i --no-save @rollup/rollup-linux-x64-gnu
       - name: Lint
         run: npm run lint
       - name: Test

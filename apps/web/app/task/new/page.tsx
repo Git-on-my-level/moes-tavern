@@ -42,6 +42,12 @@ function NewTaskPageContent() {
     }
     if (draft.proposedUnits < 1) {
       newErrors.proposedUnits = 'Must be at least 1';
+    } else if (listing) {
+      if (draft.proposedUnits < listing.pricing.minUnits) {
+        newErrors.proposedUnits = `Must be at least ${listing.pricing.minUnits}`;
+      } else if (draft.proposedUnits > listing.pricing.maxUnits) {
+        newErrors.proposedUnits = `Must be at most ${listing.pricing.maxUnits}`;
+      }
     }
     if (draft.taskURI && !isValidUrl(draft.taskURI)) {
       newErrors.taskURI = 'Must be a valid URL';

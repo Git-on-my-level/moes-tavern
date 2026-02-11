@@ -1,6 +1,6 @@
-import MiniSearch from "minisearch";
-import type { ListingMetadata } from "@moes/curation";
-import type { AgentMetrics, ListingCuration } from "@moes/indexer";
+import MiniSearch from 'minisearch';
+import type { ListingMetadata } from '@moes/curation';
+import type { AgentMetrics, ListingCuration } from '@moes/indexer';
 
 export type ListingPricing = {
   unitType: string;
@@ -26,11 +26,11 @@ export type PriceBucket = {
 };
 
 export const PRICE_BUCKETS: PriceBucket[] = [
-  { id: "under-50", min: 0, max: 50 },
-  { id: "50-100", min: 50, max: 100 },
-  { id: "100-250", min: 100, max: 250 },
-  { id: "250-500", min: 250, max: 500 },
-  { id: "500-plus", min: 500, max: Number.POSITIVE_INFINITY }
+  { id: 'under-50', min: 0, max: 50 },
+  { id: '50-100', min: 50, max: 100 },
+  { id: '100-250', min: 100, max: 250 },
+  { id: '250-500', min: 250, max: 500 },
+  { id: '500-plus', min: 500, max: Number.POSITIVE_INFINITY },
 ];
 
 export type SearchWeights = {
@@ -86,25 +86,28 @@ export type SearchIndex = {
 const DEFAULT_WEIGHTS: SearchWeights = {
   relevance: 0.5,
   trust: 0.4,
-  economics: 0.1
+  economics: 0.1,
 };
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-const tokenizeQuery = (value: string) => value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+const tokenizeQuery = (value: string) =>
+  value.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
 export function buildSearchIndex(listings: SearchListing[]): SearchIndex {
   const mini = new MiniSearch<SearchDoc>({
-    idField: "listingId",
-    fields: ["title", "description", "tags"],
-    storeFields: ["listingId"],
-    processTerm: (term) => term.toLowerCase()
+    idField: 'listingId',
+    fields: ['title', 'description', 'tags'],
+    storeFields: ['listingId'],
+    processTerm: (term) => term.toLowerCase(),
   });
 
   const docs: SearchDoc[] = listings.map((listing) => ({
     listingId: listing.listingId,
-    title: listing.metadata.title ?? "",
-    description: listing.metadata.description ?? "",
-    tags: Array.isArray(listing.metadata.tags) ? listing.metadata.tags.join(" ") : ""
+    title: listing.metadata.title ?? '',
+    description: listing.metadata.description ?? '',
+    tags: Array.isArray(listing.metadata.tags)
+      ? listing.metadata.tags.join(' ')
+      : '',
   }));
 
   mini.addAll(docs);
@@ -128,9 +131,12 @@ export function buildSearchIndex(listings: SearchListing[]): SearchIndex {
   return { mini, listings: listingMap, priceStatsByUnitType };
 }
 
-export function searchListings(index: SearchIndex, options: SearchOptions = {}): SearchResponse {
+export function searchListings(
+  index: SearchIndex,
+  options: SearchOptions = {},
+): SearchResponse {
   const weights = { ...DEFAULT_WEIGHTS, ...options.weights };
-  const text = options.text?.trim() ?? "";
+  const text = options.text?.trim() ?? '';
 
   let candidates: { listingId: number; relevanceScore: number }[] = [];
 
@@ -140,23 +146,22 @@ export function searchListings(index: SearchIndex, options: SearchOptions = {}):
     const results = index.mini.search(text, {
       prefix: true,
       fuzzy: 0.2,
-      combineWith: "OR"
+      combineWith: 'OR',
     });
     candidates = results.map((result) => ({
       listingId: Number(result.id),
-      relevanceScore:
-        result.queryTerms
-          ? new Set(
-              result.queryTerms
-                .map((term: string) => term.toLowerCase())
-                .filter((term: string) => queryTerms.has(term))
-            ).size / totalTerms
-          : 0
+      relevanceScore: result.queryTerms
+        ? new Set(
+            result.queryTerms
+              .map((term: string) => term.toLowerCase())
+              .filter((term: string) => queryTerms.has(term)),
+          ).size / totalTerms
+        : 0,
     }));
   } else {
     candidates = Array.from(index.listings.values()).map((listing) => ({
       listingId: listing.listingId,
-      relevanceScore: 0
+      relevanceScore: 0,
     }));
   }
 
@@ -169,7 +174,8 @@ export function searchListings(index: SearchIndex, options: SearchOptions = {}):
   const filteredCandidates = candidates.filter((entry) => {
     const listing = index.listings.get(entry.listingId);
     if (!listing) return false;
-    if (options.unitType && listing.pricing.unitType !== options.unitType) return false;
+    if (options.unitType && listing.pricing.unitType !== options.unitType)
+      return false;
     if (options.priceBucket) {
       const bucket = getPriceBucketId(listing.pricing.unitPrice);
       if (bucket !== options.priceBucket) return false;
@@ -182,7 +188,10 @@ export function searchListings(index: SearchIndex, options: SearchOptions = {}):
       const listing = index.listings.get(entry.listingId);
       if (!listing) return null;
       const trustScore = computeTrustScore(listing);
-      const economicsScore = computePriceScore(listing, index.priceStatsByUnitType);
+      const economicsScore = computePriceScore(
+        listing,
+        index.priceStatsByUnitType,
+      );
       const score =
         entry.relevanceScore * weights.relevance +
         trustScore * weights.trust +
@@ -193,7 +202,7 @@ export function searchListings(index: SearchIndex, options: SearchOptions = {}):
         score,
         relevanceScore: entry.relevanceScore,
         trustScore,
-        economicsScore
+        economicsScore,
       };
     })
     .filter((result): result is SearchResult => Boolean(result))
@@ -226,7 +235,7 @@ function getPriceBucketId(unitPrice: number): string {
       return bucket.id;
     }
   }
-  return PRICE_BUCKETS[PRICE_BUCKETS.length - 1]?.id ?? "unknown";
+  return PRICE_BUCKETS[PRICE_BUCKETS.length - 1]?.id ?? 'unknown';
 }
 
 function computeTrustScore(listing: SearchListing): number {
@@ -240,16 +249,17 @@ function computeTrustScore(listing: SearchListing): number {
   const badges = curation?.badges ?? {
     metadata_validated: false,
     endpoint_verified: false,
-    probe_passed: false
+    probe_passed: false,
   };
 
   const badgeCount = [
     badges.metadata_validated,
     badges.endpoint_verified,
-    badges.probe_passed
+    badges.probe_passed,
   ].filter(Boolean).length;
 
   const badgeBonus = badgeCount * 0.05;
+  const riskPenalty = clamp01((curation?.riskScore ?? 0) / 100);
   const trust =
     acceptRate * 0.4 +
     (1 - disputeRate) * 0.25 +
@@ -257,16 +267,17 @@ function computeTrustScore(listing: SearchListing): number {
     probeScore * 0.2 +
     badgeBonus;
 
-  return clamp01(trust);
+  return clamp01(trust * (1 - 0.3 * riskPenalty));
 }
 
 function computePriceScore(
   listing: SearchListing,
-  priceStatsByUnitType: Map<string, PriceStats>
+  priceStatsByUnitType: Map<string, PriceStats>,
 ): number {
   const stats = priceStatsByUnitType.get(listing.pricing.unitType);
   if (!stats) return 0.5;
   if (stats.max === stats.min) return 1;
-  const normalized = (listing.pricing.unitPrice - stats.min) / (stats.max - stats.min);
+  const normalized =
+    (listing.pricing.unitPrice - stats.min) / (stats.max - stats.min);
   return clamp01(1 - normalized);
 }

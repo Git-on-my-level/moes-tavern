@@ -1,223 +1,262 @@
-import { describe, expect, it } from "vitest";
-import type { IndexerEvent, ListingCuration } from "../src/indexer";
-import { Indexer } from "../src/indexer";
+import { describe, expect, it } from 'vitest';
+import type { IndexerEvent, ListingCuration } from '../src/indexer';
+import { Indexer } from '../src/indexer';
 
-describe("Indexer", () => {
-  it("computes per-agent metrics and query results", () => {
+describe('Indexer', () => {
+  it('computes per-agent metrics and query results', () => {
     const events: IndexerEvent[] = [
       {
-        type: "ListingCreated",
+        type: 'ListingCreated',
         blockNumber: 1,
         logIndex: 0,
         timestamp: 10,
         listingId: 1,
         agentId: 1,
-        listingURI: "ipfs://listing-1",
+        listingURI: 'ipfs://listing-1',
         pricing: {
-          paymentToken: "0xToken",
+          paymentToken: '0xToken',
           basePrice: 100,
-          unitType: "LOC",
+          unitType: 'LOC',
           unitPrice: 10,
           minUnits: 1,
           maxUnits: 100,
-          quoteRequired: false
+          quoteRequired: false,
         },
         policy: {
           challengeWindowSec: 3600,
           postDisputeWindowSec: 0,
-          sellerBondBps: 0
+          sellerBondBps: 0,
         },
-        active: true
+        active: true,
       },
       {
-        type: "ListingCreated",
+        type: 'ListingCreated',
         blockNumber: 1,
         logIndex: 1,
         timestamp: 11,
         listingId: 2,
         agentId: 2,
-        listingURI: "ipfs://listing-2",
+        listingURI: 'ipfs://listing-2',
         pricing: {
-          paymentToken: "0xToken",
+          paymentToken: '0xToken',
           basePrice: 200,
-          unitType: "LOC",
+          unitType: 'LOC',
           unitPrice: 20,
           minUnits: 1,
           maxUnits: 100,
-          quoteRequired: true
+          quoteRequired: true,
         },
         policy: {
           challengeWindowSec: 3600,
           postDisputeWindowSec: 0,
-          sellerBondBps: 0
+          sellerBondBps: 0,
         },
-        active: true
+        active: true,
       },
       {
-        type: "TaskPosted",
+        type: 'TaskPosted',
         blockNumber: 2,
         logIndex: 0,
         timestamp: 100,
         taskId: 1,
         listingId: 1,
         agentId: 1,
-        buyer: "0xBuyer",
-        taskURI: "ipfs://task-1",
-        proposedUnits: 10
+        buyer: '0xBuyer',
+        taskURI: 'ipfs://task-1',
+        proposedUnits: 10,
       },
       {
-        type: "TaskAccepted",
+        type: 'TaskAccepted',
         blockNumber: 2,
         logIndex: 1,
         timestamp: 120,
-        taskId: 1
+        taskId: 1,
       },
       {
-        type: "DeliverableSubmitted",
+        type: 'TaskFunded',
+        blockNumber: 2,
+        logIndex: 2,
+        timestamp: 130,
+        taskId: 1,
+        amount: 200,
+      },
+      {
+        type: 'QuoteAccepted',
+        blockNumber: 2,
+        logIndex: 3,
+        timestamp: 140,
+        taskId: 1,
+      },
+      {
+        type: 'DeliverableSubmitted',
         blockNumber: 3,
         logIndex: 0,
         timestamp: 200,
         taskId: 1,
-        artifactURI: "ipfs://artifact-1",
-        artifactHash: "0xhash1"
+        artifactURI: 'ipfs://artifact-1',
+        artifactHash: '0xhash1',
       },
       {
-        type: "SubmissionAccepted",
+        type: 'SubmissionAccepted',
         blockNumber: 4,
         logIndex: 0,
         timestamp: 210,
-        taskId: 1
+        taskId: 1,
       },
       {
-        type: "TaskSettled",
+        type: 'TaskSettled',
         blockNumber: 4,
         logIndex: 1,
         timestamp: 220,
         taskId: 1,
         buyerPayout: 100,
-        sellerBondRefund: 0
+        sellerBondRefund: 0,
       },
       {
-        type: "TaskPosted",
+        type: 'TaskPosted',
         blockNumber: 5,
         logIndex: 0,
         timestamp: 300,
         taskId: 2,
         listingId: 1,
         agentId: 1,
-        buyer: "0xBuyer",
-        taskURI: "ipfs://task-2",
-        proposedUnits: 5
+        buyer: '0xBuyer',
+        taskURI: 'ipfs://task-2',
+        proposedUnits: 5,
       },
       {
-        type: "QuoteProposed",
+        type: 'QuoteProposed',
         blockNumber: 5,
         logIndex: 1,
         timestamp: 310,
         taskId: 2,
         quotedUnits: 5,
         quotedTotalPrice: 50,
-        expiry: 0
+        expiry: 0,
       },
       {
-        type: "QuoteAccepted",
+        type: 'QuoteAccepted',
         blockNumber: 6,
         logIndex: 0,
         timestamp: 320,
-        taskId: 2
+        taskId: 2,
       },
       {
-        type: "DeliverableSubmitted",
+        type: 'DeliverableSubmitted',
         blockNumber: 7,
         logIndex: 0,
         timestamp: 360,
         taskId: 2,
-        artifactURI: "ipfs://artifact-2",
-        artifactHash: "0xhash2"
+        artifactURI: 'ipfs://artifact-2',
+        artifactHash: '0xhash2',
       },
       {
-        type: "SubmissionDisputed",
+        type: 'SubmissionDisputed',
         blockNumber: 8,
         logIndex: 0,
         timestamp: 400,
         taskId: 2,
-        disputeURI: "ipfs://dispute-2"
+        disputeURI: 'ipfs://dispute-2',
       },
       {
-        type: "TaskSettled",
+        type: 'TaskSettled',
         blockNumber: 9,
         logIndex: 0,
         timestamp: 450,
         taskId: 2,
         buyerPayout: 50,
-        sellerBondRefund: 0
+        sellerBondRefund: 0,
       },
       {
-        type: "TaskPosted",
+        type: 'TaskPosted',
         blockNumber: 10,
         logIndex: 0,
         timestamp: 500,
         taskId: 3,
         listingId: 1,
         agentId: 1,
-        buyer: "0xBuyer",
-        taskURI: "ipfs://task-3",
-        proposedUnits: 3
+        buyer: '0xBuyer',
+        taskURI: 'ipfs://task-3',
+        proposedUnits: 3,
       },
       {
-        type: "TaskAccepted",
+        type: 'TaskAccepted',
         blockNumber: 10,
         logIndex: 1,
         timestamp: 520,
-        taskId: 3
+        taskId: 3,
       },
       {
-        type: "DeliverableSubmitted",
+        type: 'TaskFunded',
+        blockNumber: 10,
+        logIndex: 2,
+        timestamp: 530,
+        taskId: 3,
+        amount: 130,
+      },
+      {
+        type: 'QuoteAccepted',
+        blockNumber: 10,
+        logIndex: 3,
+        timestamp: 535,
+        taskId: 3,
+      },
+      {
+        type: 'DeliverableSubmitted',
         blockNumber: 11,
         logIndex: 0,
         timestamp: 540,
         taskId: 3,
-        artifactURI: "ipfs://artifact-3",
-        artifactHash: "0xhash3"
+        artifactURI: 'ipfs://artifact-3',
+        artifactHash: '0xhash3',
       },
       {
-        type: "TaskSettled",
+        type: 'DeliverableSubmitted',
+        blockNumber: 11,
+        logIndex: 0,
+        timestamp: 540,
+        taskId: 3,
+        artifactURI: 'ipfs://artifact-3',
+        artifactHash: '0xhash3',
+      },
+      {
+        type: 'TaskSettled',
         blockNumber: 12,
         logIndex: 0,
         timestamp: 700,
         taskId: 3,
         buyerPayout: 30,
-        sellerBondRefund: 0
+        sellerBondRefund: 0,
       },
       {
-        type: "TaskPosted",
+        type: 'TaskPosted',
         blockNumber: 13,
         logIndex: 0,
         timestamp: 800,
         taskId: 4,
         listingId: 2,
         agentId: 2,
-        buyer: "0xBuyer",
-        taskURI: "ipfs://task-4",
-        proposedUnits: 2
+        buyer: '0xBuyer',
+        taskURI: 'ipfs://task-4',
+        proposedUnits: 2,
       },
       {
-        type: "TaskCancelled",
+        type: 'TaskCancelled',
         blockNumber: 13,
         logIndex: 1,
         timestamp: 820,
-        taskId: 4
+        taskId: 4,
       },
       {
-        type: "ListingUpdated",
+        type: 'ListingUpdated',
         blockNumber: 14,
         logIndex: 0,
         timestamp: 900,
         listingId: 2,
         agentId: 2,
-        listingURI: "ipfs://listing-2-updated",
-        active: false
-      }
+        listingURI: 'ipfs://listing-2-updated',
+        active: false,
+      },
     ];
 
     const indexer = new Indexer();
@@ -234,7 +273,7 @@ describe("Indexer", () => {
     expect(agent1.acceptRate).toBe(1);
     expect(agent1.disputeRate).toBeCloseTo(1 / 3, 6);
     expect(agent1.silentAutoReleaseFrequency).toBeCloseTo(1 / 3, 6);
-    expect(agent1.avgTimeToSubmitSec).toBeCloseTo(140 / 3, 6);
+    expect(agent1.avgTimeToSubmitSec).toBeCloseTo(35, 6);
 
     const agent2 = indexer.getAgentMetrics(2);
     expect(agent2.postedCount).toBe(1);
@@ -255,39 +294,39 @@ describe("Indexer", () => {
 
     const listingsAgent2 = indexer.getListings({ agentId: 2 });
     expect(listingsAgent2).toHaveLength(1);
-    expect(listingsAgent2[0]?.listingURI).toBe("ipfs://listing-2-updated");
+    expect(listingsAgent2[0]?.listingURI).toBe('ipfs://listing-2-updated');
 
     const tasksAgent1 = indexer.getTasksByAgent(1);
     expect(tasksAgent1.map((task) => task.taskId)).toEqual([1, 2, 3]);
   });
 
-  it("persists listing curation outputs", () => {
+  it('persists listing curation outputs', () => {
     const indexer = new Indexer();
     indexer.ingest([
       {
-        type: "ListingCreated",
+        type: 'ListingCreated',
         blockNumber: 1,
         logIndex: 0,
         timestamp: 10,
         listingId: 99,
         agentId: 9,
-        listingURI: "ipfs://listing-99",
+        listingURI: 'ipfs://listing-99',
         pricing: {
-          paymentToken: "0xToken",
+          paymentToken: '0xToken',
           basePrice: 100,
-          unitType: "LOC",
+          unitType: 'LOC',
           unitPrice: 10,
           minUnits: 1,
           maxUnits: 100,
-          quoteRequired: false
+          quoteRequired: false,
         },
         policy: {
           challengeWindowSec: 3600,
           postDisputeWindowSec: 0,
-          sellerBondBps: 0
+          sellerBondBps: 0,
         },
-        active: true
-      }
+        active: true,
+      },
     ]);
 
     const curation: ListingCuration = {
@@ -295,23 +334,23 @@ describe("Indexer", () => {
       badges: {
         metadata_validated: true,
         endpoint_verified: false,
-        probe_passed: true
+        probe_passed: true,
       },
       riskScore: 42,
       probeScore: 0.8,
-      probeEvidenceURI: "fixtures/probe.json",
+      probeEvidenceURI: 'fixtures/probe.json',
       lint: {
         valid: true,
         errors: [],
         warnings: [],
-        spamSignals: []
+        spamSignals: [],
       },
       endpointHealth: {
         total: 1,
         okCount: 0,
         failedCount: 1,
-        checkedAt: 1234
-      }
+        checkedAt: 1234,
+      },
     };
 
     indexer.setListingCuration(99, curation);
