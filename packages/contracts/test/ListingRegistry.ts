@@ -24,7 +24,7 @@ describe('ListingRegistry', function () {
     return {
       paymentToken,
       basePrice: 1000n,
-      unitType: ethers.keccak256(ethers.toUtf8Bytes('LOC')),
+      unitType: ethers.encodeBytes32String('LOC'),
       unitPrice: 250n,
       minUnits: 1,
       maxUnits: 10,

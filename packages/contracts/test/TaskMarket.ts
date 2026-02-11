@@ -10,7 +10,7 @@ const ARTIFACT_HASH = ethers.keccak256(ethers.toUtf8Bytes('artifact'));
 const pricingTemplate = {
   paymentToken: ethers.ZeroAddress,
   basePrice: 100n,
-  unitType: ethers.keccak256(ethers.toUtf8Bytes('LOC')),
+  unitType: ethers.encodeBytes32String('LOC'),
   unitPrice: 10n,
   minUnits: 1,
   maxUnits: 10,
