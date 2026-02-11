@@ -48,6 +48,8 @@ interface ITaskMarket {
     function getTask(uint256 taskId) external view returns (Task memory);
     function listingRegistry() external view returns (address);
 
+    function getTaskState(uint256 taskId) external view returns (TaskStatus status, uint256 listingId, address buyer, uint64 submittedAt, uint64 disputedAt);
+
     function markDisputed(uint256 taskId, string calldata disputeURI) external;
 
     function resolveDispute(uint256 taskId, DisputeOutcome outcome, string calldata resolutionURI) external;
@@ -127,11 +129,11 @@ contract DisputeModule is Ownable2Step {
         if (record.opened) {
             revert("DisputeModule: already opened");
         }
-        ITaskMarket.Task memory task = taskMarket.getTask(taskId);
-        if (task.status != ITaskMarket.TaskStatus.SUBMITTED) {
+        (ITaskMarket.TaskStatus status, , address buyer, , ) = taskMarket.getTaskState(taskId);
+        if (status != ITaskMarket.TaskStatus.SUBMITTED) {
             revert("DisputeModule: not submitted");
         }
-        if (msg.sender != address(taskMarket) && task.buyer != msg.sender) {
+        if (msg.sender != address(taskMarket) && buyer != msg.sender) {
             revert("DisputeModule: buyer only");
         }
 
@@ -142,13 +144,13 @@ contract DisputeModule is Ownable2Step {
         }
 
         record.opened = true;
-        record.buyer = task.buyer;
+        record.buyer = buyer;
         record.disputeURI = disputeURI;
         record.outcome = ITaskMarket.DisputeOutcome.SELLER_WINS;
 
         taskMarket.markDisputed(taskId, disputeURI);
 
-        emit DisputeOpened(taskId, task.buyer, disputeURI);
+        emit DisputeOpened(taskId, buyer, disputeURI);
     }
 
     function resolveDispute(

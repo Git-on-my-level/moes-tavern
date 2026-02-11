@@ -572,6 +572,13 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
         return _getTaskOrRevert(taskId);
     }
 
+    function getTaskState(
+        uint256 taskId
+    ) external view returns (TaskStatus status, uint256 listingId, address buyer, uint64 submittedAt, uint64 disputedAt) {
+        Task storage task = _getTaskOrRevert(taskId);
+        return (task.status, task.listingId, task.buyer, task.submittedAt, task.disputedAt);
+    }
+
     function _settle(Task storage task, SettlementPath path) internal {
         _settleWithPayouts(task, 0, 0, path);
     }
