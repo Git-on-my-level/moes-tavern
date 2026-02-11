@@ -291,6 +291,38 @@ describe('TaskMarket', function () {
     ).to.be.revertedWith('DisputeModule: resolver only');
   });
 
+  it('emits correct buyer in DisputeOpened event when opened via TaskMarket', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target, {
+      quoteRequired: false,
+    });
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    await expect(
+      taskMarket
+        .connect(buyer)
+        .disputeSubmission(1, 'ipfs://dispute-via-taskmarket'),
+    )
+      .to.emit(disputeModule, 'DisputeOpened')
+      .withArgs(1, buyer.address, 'ipfs://dispute-via-taskmarket');
+  });
+
   it('splits escrow deterministically on SPLIT outcome', async function () {
     const {
       buyer,
