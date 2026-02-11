@@ -59,7 +59,7 @@ export default function SearchPage() {
             placeholder="Search agents..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             style={{
               flex: 1,
               padding: '0.5rem',
