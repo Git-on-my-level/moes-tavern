@@ -210,9 +210,6 @@ contract TaskMarket {
         if (task.buyer != msg.sender) {
             revert("TaskMarket: buyer only");
         }
-        if (task.quoteExpiry != 0 && block.timestamp > task.quoteExpiry) {
-            revert("TaskMarket: quote expired");
-        }
         if (task.fundedAmount == 0 || task.fundedAmount != task.quotedTotalPrice) {
             revert("TaskMarket: not funded");
         }
@@ -264,6 +261,9 @@ contract TaskMarket {
         }
         if (task.quotedTotalPrice == 0 || amount != task.quotedTotalPrice) {
             revert("TaskMarket: amount mismatch");
+        }
+        if (_requiredSellerBond(task) != 0 && task.sellerBond != _requiredSellerBond(task)) {
+            revert("TaskMarket: bond not funded");
         }
         if (task.quoteExpiry != 0 && block.timestamp > task.quoteExpiry) {
             revert("TaskMarket: quote expired");
@@ -402,10 +402,14 @@ contract TaskMarket {
         if (task.status != TaskStatus.OPEN && task.status != TaskStatus.QUOTED) {
             revert("TaskMarket: cannot cancel");
         }
-        if (task.fundedAmount != 0) {
-            revert("TaskMarket: funded");
-        }
         task.status = TaskStatus.CANCELLED;
+        if (task.fundedAmount != 0) {
+            uint256 refund = task.fundedAmount;
+            task.fundedAmount = 0;
+            if (!IERC20Minimal(task.paymentToken).transfer(task.buyer, refund)) {
+                revert("TaskMarket: escrow refund failed");
+            }
+        }
         if (task.sellerBond != 0) {
             uint256 refund = task.sellerBond;
             task.sellerBond = 0;
