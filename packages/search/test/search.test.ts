@@ -1,22 +1,22 @@
-import { describe, expect, it } from "vitest";
-import { buildSearchIndex, searchListings } from "../src/search";
-import type { SearchListing } from "../src/search";
+import { describe, expect, it } from 'vitest';
+import { buildSearchIndex, searchListings } from '../src/search';
+import type { SearchListing } from '../src/search';
 
 const fixtures: SearchListing[] = [
   {
     listingId: 1,
     agentId: 11,
     metadata: {
-      title: "Rust API Agent",
-      description: "Build and maintain high-performance Rust APIs.",
-      tags: ["rust", "api", "backend"]
+      title: 'Rust API Agent',
+      description: 'Build and maintain high-performance Rust APIs.',
+      tags: ['rust', 'api', 'backend'],
     },
     pricing: {
-      unitType: "LOC",
+      unitType: 'LOC',
       unitPrice: 120,
       basePrice: 100,
       minUnits: 10,
-      maxUnits: 200
+      maxUnits: 200,
     },
     metrics: {
       agentId: 11,
@@ -31,46 +31,46 @@ const fixtures: SearchListing[] = [
       disputeRate: 0.05,
       cancelRate: 0.08,
       silentAutoReleaseFrequency: 0.1,
-      avgTimeToSubmitSec: 3600
+      avgTimeToSubmitSec: 3600,
     },
     curation: {
       updatedAt: 1700000000,
       badges: {
         metadata_validated: true,
         endpoint_verified: true,
-        probe_passed: true
+        probe_passed: true,
       },
-      riskScore: 0.1,
+      riskScore: 10,
       probeScore: 0.8,
-      probeEvidenceURI: "ipfs://probe-1",
+      probeEvidenceURI: 'ipfs://probe-1',
       lint: {
         valid: true,
         errors: [],
         warnings: [],
-        spamSignals: []
+        spamSignals: [],
       },
       endpointHealth: {
         total: 2,
         okCount: 2,
         failedCount: 0,
-        checkedAt: 1700000000
-      }
-    }
+        checkedAt: 1700000000,
+      },
+    },
   },
   {
     listingId: 2,
     agentId: 22,
     metadata: {
-      title: "Rust API Consultant",
-      description: "API design, load testing, and backend review.",
-      tags: ["rust", "api", "review"]
+      title: 'Rust API Consultant',
+      description: 'API design, load testing, and backend review.',
+      tags: ['rust', 'api', 'review'],
     },
     pricing: {
-      unitType: "LOC",
+      unitType: 'LOC',
       unitPrice: 80,
       basePrice: 50,
       minUnits: 5,
-      maxUnits: 120
+      maxUnits: 120,
     },
     metrics: {
       agentId: 22,
@@ -85,46 +85,46 @@ const fixtures: SearchListing[] = [
       disputeRate: 0.2,
       cancelRate: 0.1,
       silentAutoReleaseFrequency: 0.3,
-      avgTimeToSubmitSec: 7200
+      avgTimeToSubmitSec: 7200,
     },
     curation: {
       updatedAt: 1700000000,
       badges: {
         metadata_validated: true,
         endpoint_verified: false,
-        probe_passed: false
+        probe_passed: false,
       },
-      riskScore: 0.4,
+      riskScore: 40,
       probeScore: 0.4,
-      probeEvidenceURI: "ipfs://probe-2",
+      probeEvidenceURI: 'ipfs://probe-2',
       lint: {
         valid: true,
         errors: [],
         warnings: [],
-        spamSignals: []
+        spamSignals: [],
       },
       endpointHealth: {
         total: 1,
         okCount: 0,
         failedCount: 1,
-        checkedAt: 1700000000
-      }
-    }
+        checkedAt: 1700000000,
+      },
+    },
   },
   {
     listingId: 3,
     agentId: 33,
     metadata: {
-      title: "Solidity Audit",
-      description: "Manual smart contract security reviews.",
-      tags: ["solidity", "audit"]
+      title: 'Solidity Audit',
+      description: 'Manual smart contract security reviews.',
+      tags: ['solidity', 'audit'],
     },
     pricing: {
-      unitType: "AUDIT",
+      unitType: 'AUDIT',
       unitPrice: 500,
       basePrice: 500,
       minUnits: 1,
-      maxUnits: 10
+      maxUnits: 10,
     },
     metrics: {
       agentId: 33,
@@ -139,46 +139,46 @@ const fixtures: SearchListing[] = [
       disputeRate: 0,
       cancelRate: 0,
       silentAutoReleaseFrequency: 0,
-      avgTimeToSubmitSec: 18000
+      avgTimeToSubmitSec: 18000,
     },
     curation: {
       updatedAt: 1700000000,
       badges: {
         metadata_validated: true,
         endpoint_verified: true,
-        probe_passed: true
+        probe_passed: true,
       },
-      riskScore: 0.2,
+      riskScore: 20,
       probeScore: 0.9,
-      probeEvidenceURI: "ipfs://probe-3",
+      probeEvidenceURI: 'ipfs://probe-3',
       lint: {
         valid: true,
         errors: [],
         warnings: [],
-        spamSignals: []
+        spamSignals: [],
       },
       endpointHealth: {
         total: 1,
         okCount: 1,
         failedCount: 0,
-        checkedAt: 1700000000
-      }
-    }
+        checkedAt: 1700000000,
+      },
+    },
   },
   {
     listingId: 4,
     agentId: 44,
     metadata: {
-      title: "Rust Bugfix",
-      description: "Targeted bug fixes for Rust services.",
-      tags: ["rust", "bugfix"]
+      title: 'Rust Bugfix',
+      description: 'Targeted bug fixes for Rust services.',
+      tags: ['rust', 'bugfix'],
     },
     pricing: {
-      unitType: "LOC",
+      unitType: 'LOC',
       unitPrice: 60,
       basePrice: 40,
       minUnits: 5,
-      maxUnits: 80
+      maxUnits: 80,
     },
     metrics: {
       agentId: 44,
@@ -193,56 +193,58 @@ const fixtures: SearchListing[] = [
       disputeRate: 0.33,
       cancelRate: 0.16,
       silentAutoReleaseFrequency: 0.5,
-      avgTimeToSubmitSec: 10000
+      avgTimeToSubmitSec: 10000,
     },
     curation: {
       updatedAt: 1700000000,
       badges: {
         metadata_validated: true,
         endpoint_verified: false,
-        probe_passed: false
+        probe_passed: false,
       },
-      riskScore: 0.6,
+      riskScore: 60,
       probeScore: 0.2,
-      probeEvidenceURI: "ipfs://probe-4",
+      probeEvidenceURI: 'ipfs://probe-4',
       lint: {
         valid: true,
         errors: [],
         warnings: [],
-        spamSignals: []
+        spamSignals: [],
       },
       endpointHealth: {
         total: 1,
         okCount: 0,
         failedCount: 1,
-        checkedAt: 1700000000
-      }
-    }
-  }
+        checkedAt: 1700000000,
+      },
+    },
+  },
 ];
 
-describe("searchListings", () => {
-  it("ranks results using relevance + trust + economics", () => {
+describe('searchListings', () => {
+  it('ranks results using relevance + trust + economics', () => {
     const index = buildSearchIndex(fixtures);
-    const response = searchListings(index, { text: "rust api" });
+    const response = searchListings(index, { text: 'rust api' });
 
     const ordered = response.results.map((result) => result.listingId);
     expect(ordered).toEqual([1, 2, 4]);
-    expect(response.results[0]?.score).toBeGreaterThan(response.results[1]?.score ?? 0);
+    expect(response.results[0]?.score).toBeGreaterThan(
+      response.results[1]?.score ?? 0,
+    );
   });
 
-  it("returns facets and respects filters", () => {
+  it('returns facets and respects filters', () => {
     const index = buildSearchIndex(fixtures);
-    const response = searchListings(index, { text: "rust" });
+    const response = searchListings(index, { text: 'rust' });
 
     expect(response.facets.unitType).toEqual({ LOC: 3 });
-    expect(response.facets.priceBucket["50-100"]).toBe(2);
-    expect(response.facets.priceBucket["100-250"]).toBe(1);
+    expect(response.facets.priceBucket['50-100']).toBe(2);
+    expect(response.facets.priceBucket['100-250']).toBe(1);
 
     const filtered = searchListings(index, {
-      text: "rust",
-      unitType: "LOC",
-      priceBucket: "50-100"
+      text: 'rust',
+      unitType: 'LOC',
+      priceBucket: '50-100',
     });
 
     expect(filtered.results.map((result) => result.listingId)).toEqual([2, 4]);
