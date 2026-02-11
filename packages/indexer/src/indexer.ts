@@ -101,6 +101,26 @@ export type TaskSettledEvent = ChainEventBase & {
   sellerBondRefund: number;
 };
 
+export type TaskSettledV2Event = ChainEventBase & {
+  type: 'TaskSettledV2';
+  taskId: number;
+  buyer: string;
+  seller: string;
+  bondFunder: string;
+  buyerEscrowPayout: number;
+  buyerBondPayout: number;
+  sellerEscrowPayout: number;
+  sellerBondRefund: number;
+  path:
+    | 'ACCEPTED'
+    | 'TIMEOUT'
+    | 'POST_DISPUTE_TIMEOUT'
+    | 'DISPUTE_SELLER_WINS'
+    | 'DISPUTE_BUYER_WINS'
+    | 'DISPUTE_SPLIT'
+    | 'DISPUTE_CANCEL';
+};
+
 export type TaskCancelledEvent = ChainEventBase & {
   type: 'TaskCancelled';
   taskId: number;
@@ -133,6 +153,7 @@ export type TaskEvent =
   | SubmissionDisputedEvent
   | SellerBondFundedEvent
   | TaskSettledEvent
+  | TaskSettledV2Event
   | TaskCancelledEvent;
 export type DisputeEvent = DisputeOpenedEvent | DisputeResolvedEvent;
 export type IndexerEvent = ListingEvent | TaskEvent | DisputeEvent;
@@ -465,6 +486,10 @@ export class Indexer {
         task.sellerBond = event.amount;
         break;
       case 'TaskSettled':
+        task.status = 'SETTLED';
+        task.settledAt = event.timestamp;
+        break;
+      case 'TaskSettledV2':
         task.status = 'SETTLED';
         task.settledAt = event.timestamp;
         break;

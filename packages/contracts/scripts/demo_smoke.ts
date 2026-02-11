@@ -336,6 +336,37 @@ async function main() {
     });
   }
 
+  const settledTaskV2Logs = await taskMarket.queryFilter(
+    taskMarket.filters.TaskSettledV2(),
+  );
+  for (const log of settledTaskV2Logs) {
+    const base = await toBase(log);
+    const args = log.args;
+    if (!args) continue;
+    const pathMap: Record<number, TaskSettledV2Event['path']> = {
+      0: 'ACCEPTED',
+      1: 'TIMEOUT',
+      2: 'POST_DISPUTE_TIMEOUT',
+      3: 'DISPUTE_SELLER_WINS',
+      4: 'DISPUTE_BUYER_WINS',
+      5: 'DISPUTE_SPLIT',
+      6: 'DISPUTE_CANCEL',
+    };
+    events.push({
+      type: 'TaskSettledV2',
+      taskId: toNumber(args.taskId),
+      buyer: args.buyer,
+      seller: args.seller,
+      bondFunder: args.bondFunder,
+      buyerEscrowPayout: toNumber(args.buyerEscrowPayout),
+      buyerBondPayout: toNumber(args.buyerBondPayout),
+      sellerEscrowPayout: toNumber(args.sellerEscrowPayout),
+      sellerBondRefund: toNumber(args.sellerBondRefund),
+      path: pathMap[Number(args.path)] ?? 'TIMEOUT',
+      ...base,
+    });
+  }
+
   const indexer = new Indexer();
   indexer.ingest(events);
 

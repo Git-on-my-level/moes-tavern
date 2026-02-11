@@ -60,6 +60,16 @@ contract TaskMarket is ReentrancyGuard {
         CANCEL
     }
 
+    enum SettlementPath {
+        ACCEPTED,
+        TIMEOUT,
+        POST_DISPUTE_TIMEOUT,
+        DISPUTE_SELLER_WINS,
+        DISPUTE_BUYER_WINS,
+        DISPUTE_SPLIT,
+        DISPUTE_CANCEL
+    }
+
     struct Task {
         uint256 id;
         uint256 listingId;
@@ -109,6 +119,17 @@ contract TaskMarket is ReentrancyGuard {
     event PostDisputeTimeoutSettled(uint256 indexed taskId, uint256 deadline, DisputeOutcome outcome);
     event SellerBondFunded(uint256 indexed taskId, uint256 amount);
     event TaskSettled(uint256 indexed taskId, uint256 buyerPayout, uint256 sellerBondRefund);
+    event TaskSettledV2(
+        uint256 indexed taskId,
+        address indexed buyer,
+        address indexed seller,
+        address bondFunder,
+        uint256 buyerEscrowPayout,
+        uint256 buyerBondPayout,
+        uint256 sellerEscrowPayout,
+        uint256 sellerBondRefund,
+        SettlementPath path
+    );
     event TaskCancelled(uint256 indexed taskId);
     event TaskCancelledForNonDelivery(
         uint256 indexed taskId,
@@ -360,7 +381,7 @@ contract TaskMarket is ReentrancyGuard {
         if (task.buyer != msg.sender) {
             revert("TaskMarket: buyer only");
         }
-        _settle(task);
+        _settle(task, SettlementPath.ACCEPTED);
         emit SubmissionAccepted(taskId);
     }
 
@@ -388,7 +409,7 @@ contract TaskMarket is ReentrancyGuard {
         if (block.timestamp < deadline) {
             revert("TaskMarket: challenge window");
         }
-        _settle(task);
+        _settle(task, SettlementPath.TIMEOUT);
     }
 
     function settleAfterPostDisputeTimeout(uint256 taskId) external nonReentrant {
@@ -405,7 +426,7 @@ contract TaskMarket is ReentrancyGuard {
             revert("TaskMarket: post-dispute window");
         }
 
-        _settle(task);
+        _settle(task, SettlementPath.POST_DISPUTE_TIMEOUT);
         emit PostDisputeTimeoutSettled(taskId, deadline, DisputeOutcome.SELLER_WINS);
     }
 
@@ -431,21 +452,26 @@ contract TaskMarket is ReentrancyGuard {
 
         uint256 buyerEscrowPayout;
         uint256 buyerBondPayout;
+        SettlementPath path;
         if (outcome == DisputeOutcome.SELLER_WINS) {
             buyerEscrowPayout = 0;
             buyerBondPayout = 0;
+            path = SettlementPath.DISPUTE_SELLER_WINS;
         } else if (outcome == DisputeOutcome.BUYER_WINS) {
             buyerEscrowPayout = task.fundedAmount;
             buyerBondPayout = task.sellerBond;
+            path = SettlementPath.DISPUTE_BUYER_WINS;
         } else if (outcome == DisputeOutcome.SPLIT) {
             buyerEscrowPayout = task.fundedAmount / 2;
             buyerBondPayout = 0;
+            path = SettlementPath.DISPUTE_SPLIT;
         } else {
             buyerEscrowPayout = task.fundedAmount;
             buyerBondPayout = 0;
+            path = SettlementPath.DISPUTE_CANCEL;
         }
 
-        _settleWithPayouts(task, buyerEscrowPayout, buyerBondPayout);
+        _settleWithPayouts(task, buyerEscrowPayout, buyerBondPayout, path);
     }
 
     function cancelTask(uint256 taskId) external nonReentrant {
@@ -508,11 +534,11 @@ contract TaskMarket is ReentrancyGuard {
         return _getTaskOrRevert(taskId);
     }
 
-    function _settle(Task storage task) internal {
-        _settleWithPayouts(task, 0, 0);
+    function _settle(Task storage task, SettlementPath path) internal {
+        _settleWithPayouts(task, 0, 0, path);
     }
 
-    function _settleWithPayouts(Task storage task, uint256 buyerEscrowPayout, uint256 buyerBondPayout) internal {
+    function _settleWithPayouts(Task storage task, uint256 buyerEscrowPayout, uint256 buyerBondPayout, SettlementPath path) internal {
         if (task.settled) {
             revert("TaskMarket: already settled");
         }
@@ -540,6 +566,17 @@ contract TaskMarket is ReentrancyGuard {
         }
 
         emit TaskSettled(task.id, buyerTotal, sellerBondRefund);
+        emit TaskSettledV2(
+            task.id,
+            task.buyer,
+            task.seller,
+            task.bondFunder,
+            buyerEscrowPayout,
+            buyerBondPayout,
+            sellerEscrowPayout,
+            sellerBondRefund,
+            path
+        );
     }
 
     function _getTaskOrRevert(uint256 taskId) internal view returns (Task storage task) {

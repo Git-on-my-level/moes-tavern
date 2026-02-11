@@ -110,7 +110,22 @@ describe('TaskMarket', function () {
     await taskMarket
       .connect(agent)
       .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
-    await taskMarket.connect(buyer).acceptSubmission(1);
+
+    const settleTx = await taskMarket.connect(buyer).acceptSubmission(1);
+
+    await expect(settleTx)
+      .to.emit(taskMarket, 'TaskSettledV2')
+      .withArgs(
+        1,
+        buyer.address,
+        agent.address,
+        ethers.ZeroAddress,
+        0,
+        0,
+        quotedTotalPrice,
+        0,
+        0,
+      );
 
     const task = await taskMarket.getTask(1);
     expect(task.status).to.equal(5);
@@ -253,8 +268,15 @@ describe('TaskMarket', function () {
   });
 
   it('snapshots seller on acceptQuote; transfer does not change submitter or payout', async function () {
-    const { buyer, agent, other, identity, listingRegistry, taskMarket, token } =
-      await deployFixture();
+    const {
+      buyer,
+      agent,
+      other,
+      identity,
+      listingRegistry,
+      taskMarket,
+      token,
+    } = await deployFixture();
     await createListing(listingRegistry, agent, token.target, {
       quoteRequired: false,
     });
@@ -276,11 +298,9 @@ describe('TaskMarket', function () {
 
     await identity
       .connect(agent)
-      ['safeTransferFrom(address,address,uint256)'](
-        agent.address,
-        other.address,
-        1,
-      );
+      [
+        'safeTransferFrom(address,address,uint256)'
+      ](agent.address, other.address, 1);
 
     await expect(
       taskMarket
@@ -645,9 +665,8 @@ describe('TaskMarket', function () {
 
   it('rejects fundTask when payment token is fee-on-transfer', async function () {
     const { buyer, agent, listingRegistry, taskMarket } = await deployFixture();
-    const FeeOnTransferERC20 = await ethers.getContractFactory(
-      'FeeOnTransferERC20',
-    );
+    const FeeOnTransferERC20 =
+      await ethers.getContractFactory('FeeOnTransferERC20');
     const feeToken = await FeeOnTransferERC20.deploy('Fee USD', 'fUSD', 100);
     const { pricing } = await createListing(
       listingRegistry,
@@ -670,9 +689,8 @@ describe('TaskMarket', function () {
 
   it('rejects fundSellerBond when payment token is fee-on-transfer', async function () {
     const { buyer, agent, listingRegistry, taskMarket } = await deployFixture();
-    const FeeOnTransferERC20 = await ethers.getContractFactory(
-      'FeeOnTransferERC20',
-    );
+    const FeeOnTransferERC20 =
+      await ethers.getContractFactory('FeeOnTransferERC20');
     const feeToken = await FeeOnTransferERC20.deploy('Fee USD', 'fUSD', 5000);
     const { pricing, policy } = await createListing(
       listingRegistry,
