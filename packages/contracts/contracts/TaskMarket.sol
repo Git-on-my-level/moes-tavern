@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -41,8 +42,10 @@ interface IDisputeModule {
     function openDispute(uint256 taskId, string calldata disputeURI) external;
 }
 
-contract TaskMarket is ReentrancyGuard {
+contract TaskMarket is ReentrancyGuard, Ownable2Step {
     using SafeERC20 for IERC20;
+    uint64 public constant DISPUTE_MODULE_UPDATE_DELAY = 1 days;
+
     enum TaskStatus {
         OPEN,
         QUOTED,
@@ -137,30 +140,30 @@ contract TaskMarket is ReentrancyGuard {
         uint256 sellerBondPenalty
     );
     event SellerCancelledQuote(uint256 indexed taskId, uint256 bondRefund);
+    event DisputeModuleUpdateScheduled(
+        address indexed previousDisputeModule,
+        address indexed pendingDisputeModule,
+        uint64 executeAfter
+    );
+    event DisputeModuleUpdateCancelled(address indexed pendingDisputeModule);
+    event DisputeModuleUpdated(address indexed previousDisputeModule, address indexed newDisputeModule);
 
     IListingRegistry public immutable listingRegistry;
     IAgentIdentityRegistry public immutable identityRegistry;
     address public disputeModule;
-    address public owner;
+    address public pendingDisputeModule;
+    uint64 public pendingDisputeModuleActivationTime;
 
     uint256 private _nextTaskId = 1;
     mapping(uint256 => Task) private _tasks;
     mapping(uint256 => bool) private _taskExists;
 
-    constructor(address listingRegistry_, address identityRegistry_) {
+    constructor(address listingRegistry_, address identityRegistry_) Ownable(msg.sender) {
         if (listingRegistry_ == address(0) || identityRegistry_ == address(0)) {
             revert("TaskMarket: zero registry");
         }
         listingRegistry = IListingRegistry(listingRegistry_);
         identityRegistry = IAgentIdentityRegistry(identityRegistry_);
-        owner = msg.sender;
-    }
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) {
-            revert("TaskMarket: owner only");
-        }
-        _;
     }
 
     modifier onlyDisputeModule() {
@@ -174,10 +177,44 @@ contract TaskMarket is ReentrancyGuard {
         if (disputeModule_ == address(0)) {
             revert("TaskMarket: zero dispute module");
         }
-        if (disputeModule != address(0)) {
-            revert("TaskMarket: dispute module already set");
+        if (disputeModule_ == disputeModule) {
+            revert("TaskMarket: dispute module unchanged");
         }
-        disputeModule = disputeModule_;
+        if (disputeModule == address(0)) {
+            disputeModule = disputeModule_;
+            emit DisputeModuleUpdated(address(0), disputeModule_);
+            return;
+        }
+
+        pendingDisputeModule = disputeModule_;
+        pendingDisputeModuleActivationTime = uint64(block.timestamp + DISPUTE_MODULE_UPDATE_DELAY);
+        emit DisputeModuleUpdateScheduled(disputeModule, disputeModule_, pendingDisputeModuleActivationTime);
+    }
+
+    function cancelDisputeModuleUpdate() external onlyOwner {
+        address pendingModule = pendingDisputeModule;
+        if (pendingModule == address(0)) {
+            revert("TaskMarket: no pending update");
+        }
+        pendingDisputeModule = address(0);
+        pendingDisputeModuleActivationTime = 0;
+        emit DisputeModuleUpdateCancelled(pendingModule);
+    }
+
+    function executeDisputeModuleUpdate() external onlyOwner {
+        address pendingModule = pendingDisputeModule;
+        if (pendingModule == address(0)) {
+            revert("TaskMarket: no pending update");
+        }
+        if (block.timestamp < pendingDisputeModuleActivationTime) {
+            revert("TaskMarket: update timelocked");
+        }
+
+        address previousDisputeModule = disputeModule;
+        disputeModule = pendingModule;
+        pendingDisputeModule = address(0);
+        pendingDisputeModuleActivationTime = 0;
+        emit DisputeModuleUpdated(previousDisputeModule, pendingModule);
     }
 
     function postTask(uint256 listingId, string calldata taskURI, uint32 proposedUnits) external returns (uint256 taskId) {

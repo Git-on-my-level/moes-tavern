@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+
 interface ITaskMarket {
     enum TaskStatus {
         OPEN,
@@ -74,7 +76,7 @@ interface IListingRegistry {
     ) external view returns (uint256 agentId, string memory listingURI, Pricing memory pricing, Policy memory policy, bool active);
 }
 
-contract DisputeModule {
+contract DisputeModule is Ownable2Step {
     struct DisputeRecord {
         address buyer;
         bool opened;
@@ -93,17 +95,9 @@ contract DisputeModule {
     );
     event ResolverUpdated(address indexed resolver, bool allowed);
 
-    address public owner;
     ITaskMarket public immutable taskMarket;
     mapping(address => bool) public resolvers;
     mapping(uint256 => DisputeRecord) public disputes;
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) {
-            revert("DisputeModule: owner only");
-        }
-        _;
-    }
 
     modifier onlyResolver() {
         if (!resolvers[msg.sender]) {
@@ -112,11 +106,10 @@ contract DisputeModule {
         _;
     }
 
-    constructor(address taskMarket_, address[] memory initialResolvers) {
+    constructor(address taskMarket_, address[] memory initialResolvers) Ownable(msg.sender) {
         if (taskMarket_ == address(0)) {
             revert("DisputeModule: zero task market");
         }
-        owner = msg.sender;
         taskMarket = ITaskMarket(taskMarket_);
         for (uint256 i = 0; i < initialResolvers.length; i++) {
             resolvers[initialResolvers[i]] = true;

@@ -84,6 +84,94 @@ describe('TaskMarket', function () {
     return { pricing, policy };
   }
 
+  it('supports two-step ownership transfer for TaskMarket and DisputeModule admin controls', async function () {
+    const { owner, other, taskMarket, disputeModule } = await deployFixture();
+
+    const replacementDisputeModule = await (
+      await ethers.getContractFactory('DisputeModule')
+    ).deploy(taskMarket.target, []);
+
+    await taskMarket.transferOwnership(other.address);
+    await taskMarket.connect(other).acceptOwnership();
+    expect(await taskMarket.owner()).to.equal(other.address);
+
+    await expect(taskMarket.setDisputeModule(replacementDisputeModule.target))
+      .to.be.revertedWithCustomError(taskMarket, 'OwnableUnauthorizedAccount')
+      .withArgs(owner.address);
+
+    await taskMarket.connect(other).setDisputeModule(replacementDisputeModule.target);
+    await expect(taskMarket.connect(other).executeDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: update timelocked',
+    );
+    await time.increase(Number(await taskMarket.DISPUTE_MODULE_UPDATE_DELAY()) + 1);
+    await taskMarket.connect(other).executeDisputeModuleUpdate();
+    expect(await taskMarket.disputeModule()).to.equal(replacementDisputeModule.target);
+
+    await disputeModule.transferOwnership(other.address);
+    await disputeModule.connect(other).acceptOwnership();
+    expect(await disputeModule.owner()).to.equal(other.address);
+
+    await expect(disputeModule.connect(owner).setResolver(owner.address, true))
+      .to.be.revertedWithCustomError(disputeModule, 'OwnableUnauthorizedAccount')
+      .withArgs(owner.address);
+    await disputeModule.connect(other).setResolver(other.address, true);
+    expect(await disputeModule.resolvers(other.address)).to.equal(true);
+  });
+
+  it('schedules, cancels, and executes dispute module updates with delay', async function () {
+    const { owner, taskMarket } = await deployFixture();
+    const nextDisputeModule = await (
+      await ethers.getContractFactory('DisputeModule')
+    ).deploy(taskMarket.target, []);
+    const replacementDisputeModule = await (
+      await ethers.getContractFactory('DisputeModule')
+    ).deploy(taskMarket.target, []);
+
+    const currentDisputeModule = await taskMarket.disputeModule();
+    const delay = Number(await taskMarket.DISPUTE_MODULE_UPDATE_DELAY());
+
+    const scheduleTx = await taskMarket.setDisputeModule(nextDisputeModule.target);
+    const scheduledActivation = BigInt((await time.latest()) + delay);
+    await expect(scheduleTx)
+      .to.emit(taskMarket, 'DisputeModuleUpdateScheduled')
+      .withArgs(currentDisputeModule, nextDisputeModule.target, scheduledActivation);
+    expect(await taskMarket.pendingDisputeModule()).to.equal(nextDisputeModule.target);
+    expect(await taskMarket.pendingDisputeModuleActivationTime()).to.equal(
+      scheduledActivation,
+    );
+
+    await expect(taskMarket.executeDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: update timelocked',
+    );
+
+    await expect(taskMarket.cancelDisputeModuleUpdate())
+      .to.emit(taskMarket, 'DisputeModuleUpdateCancelled')
+      .withArgs(nextDisputeModule.target);
+    expect(await taskMarket.pendingDisputeModule()).to.equal(ethers.ZeroAddress);
+    expect(await taskMarket.pendingDisputeModuleActivationTime()).to.equal(0);
+
+    await expect(taskMarket.executeDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: no pending update',
+    );
+
+    const rescheduleTx = await taskMarket.setDisputeModule(replacementDisputeModule.target);
+    const rescheduledActivation = BigInt((await time.latest()) + delay);
+    await expect(rescheduleTx)
+      .to.emit(taskMarket, 'DisputeModuleUpdateScheduled')
+      .withArgs(currentDisputeModule, replacementDisputeModule.target, rescheduledActivation);
+
+    await time.increase(delay + 1);
+    await expect(taskMarket.executeDisputeModuleUpdate())
+      .to.emit(taskMarket, 'DisputeModuleUpdated')
+      .withArgs(currentDisputeModule, replacementDisputeModule.target);
+    expect(await taskMarket.disputeModule()).to.equal(replacementDisputeModule.target);
+    expect(await taskMarket.pendingDisputeModule()).to.equal(ethers.ZeroAddress);
+
+    await expect(taskMarket.connect(owner).cancelDisputeModuleUpdate()).to.be.revertedWith(
+      'TaskMarket: no pending update',
+    );
+  });
+
   it('runs happy path quote -> fund -> accept -> submit -> settle', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();
