@@ -1,0 +1,12 @@
+**/node_modules/
+**/node_modules.bak/
+**/pnpm-lock.yaml
+**/.next/
+**/dist/
+**/*.tsbuildinfo
+**/.DS_Store
+
+# Hardhat/TypeChain outputs
+packages/contracts/artifacts/
+packages/contracts/cache/
+packages/contracts/typechain-types/
