@@ -110,6 +110,7 @@ contract TaskMarket is ReentrancyGuard {
         uint256 escrowRefund,
         uint256 sellerBondPenalty
     );
+    event SellerCancelledQuote(uint256 indexed taskId, uint256 bondRefund);
 
     IListingRegistry public immutable listingRegistry;
     IAgentIdentityRegistry public immutable identityRegistry;
@@ -248,6 +249,28 @@ contract TaskMarket is ReentrancyGuard {
         IERC20(task.paymentToken).safeTransferFrom(msg.sender, address(this), amount);
 
         emit SellerBondFunded(taskId, amount);
+    }
+
+    function sellerCancelQuote(uint256 taskId) external nonReentrant {
+        Task storage task = _getTaskOrRevert(taskId);
+        if (task.status != TaskStatus.QUOTED) {
+            revert("TaskMarket: not quoted");
+        }
+        if (task.fundedAmount != 0) {
+            revert("TaskMarket: task funded");
+        }
+        _requireAgentAuthorized(task.agentId);
+        uint256 refund = task.sellerBond;
+        task.sellerBond = 0;
+        task.quotedUnits = 0;
+        task.quotedTotalPrice = 0;
+        task.quoteExpiry = 0;
+        task.status = TaskStatus.CANCELLED;
+        if (refund > 0) {
+            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), refund);
+        }
+
+        emit SellerCancelledQuote(taskId, refund);
     }
 
     function fundTask(uint256 taskId, uint256 amount) external nonReentrant {
