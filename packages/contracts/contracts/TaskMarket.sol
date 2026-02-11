@@ -430,7 +430,7 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
         emit SubmissionAccepted(taskId);
     }
 
-    function disputeSubmission(uint256 taskId, string calldata disputeURI) external {
+    function disputeSubmission(uint256 taskId, string calldata disputeURI) external nonReentrant {
         if (disputeModule == address(0)) {
             revert("TaskMarket: dispute module unset");
         }
