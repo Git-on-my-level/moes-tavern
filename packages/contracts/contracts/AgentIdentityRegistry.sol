@@ -36,6 +36,11 @@ contract AgentIdentityRegistry is ERC721 {
         return _agentURIs[agentId];
     }
 
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        ownerOf(tokenId);
+        return _agentURIs[tokenId];
+    }
+
     function _setAgentURI(uint256 agentId, string calldata agentURI) internal {
         _agentURIs[agentId] = agentURI;
         emit AgentURIUpdated(agentId, agentURI);
