@@ -249,7 +249,60 @@ describe('TaskMarket', function () {
       taskMarket
         .connect(other)
         .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
-    ).to.be.revertedWith('TaskMarket: not authorized');
+    ).to.be.revertedWith('TaskMarket: seller only');
+  });
+
+  it('snapshots seller on acceptQuote; transfer does not change submitter or payout', async function () {
+    const { buyer, agent, other, identity, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target, {
+      quoteRequired: false,
+    });
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const quoted = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, quoted.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, quoted.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const active = await taskMarket.getTask(1);
+    expect(active.seller).to.equal(agent.address);
+
+    await identity
+      .connect(agent)
+      ['safeTransferFrom(address,address,uint256)'](
+        agent.address,
+        other.address,
+        1,
+      );
+
+    await expect(
+      taskMarket
+        .connect(other)
+        .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: seller only');
+
+    const agentBalanceBefore = await token.balanceOf(agent.address);
+    const newOwnerBalanceBefore = await token.balanceOf(other.address);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+    await taskMarket.connect(buyer).acceptSubmission(1);
+
+    const agentBalanceAfter = await token.balanceOf(agent.address);
+    const newOwnerBalanceAfter = await token.balanceOf(other.address);
+
+    expect(agentBalanceAfter - agentBalanceBefore).to.equal(
+      quoted.quotedTotalPrice,
+    );
+    expect(newOwnerBalanceAfter - newOwnerBalanceBefore).to.equal(0n);
   });
 
   it('enforces buyer-only dispute opening and resolver-only resolution', async function () {

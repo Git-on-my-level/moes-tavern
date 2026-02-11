@@ -65,6 +65,7 @@ contract TaskMarket is ReentrancyGuard {
         uint256 listingId;
         uint256 agentId;
         address buyer;
+        address seller;
         address paymentToken;
         string taskURI;
         uint32 proposedUnits;
@@ -227,6 +228,7 @@ contract TaskMarket is ReentrancyGuard {
         if (_requiredSellerBond(task) != 0 && task.sellerBond != _requiredSellerBond(task)) {
             revert("TaskMarket: bond not funded");
         }
+        task.seller = _agentOwner(task.agentId);
         task.status = TaskStatus.ACTIVE;
         task.activatedAt = uint64(block.timestamp);
 
@@ -335,7 +337,9 @@ contract TaskMarket is ReentrancyGuard {
         if (task.status != TaskStatus.ACTIVE) {
             revert("TaskMarket: not active");
         }
-        _requireAgentAuthorized(task.agentId);
+        if (msg.sender != task.seller) {
+            revert("TaskMarket: seller only");
+        }
         if (task.fundedAmount == 0) {
             revert("TaskMarket: not funded");
         }
@@ -529,7 +533,7 @@ contract TaskMarket is ReentrancyGuard {
             IERC20(task.paymentToken).safeTransfer(task.buyer, buyerTotal);
         }
         if (sellerEscrowPayout > 0) {
-            IERC20(task.paymentToken).safeTransfer(_agentOwner(task.agentId), sellerEscrowPayout);
+            IERC20(task.paymentToken).safeTransfer(task.seller, sellerEscrowPayout);
         }
         if (sellerBondRefund > 0) {
             IERC20(task.paymentToken).safeTransfer(task.bondFunder, sellerBondRefund);

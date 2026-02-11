@@ -24,6 +24,7 @@ interface ITaskMarket {
         uint256 listingId;
         uint256 agentId;
         address buyer;
+        address seller;
         address paymentToken;
         string taskURI;
         uint32 proposedUnits;
