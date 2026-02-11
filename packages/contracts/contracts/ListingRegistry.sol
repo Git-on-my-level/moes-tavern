@@ -64,6 +64,7 @@ contract ListingRegistry {
     );
 
     IAgentIdentityRegistry public immutable identityRegistry;
+    uint256 public constant MAX_URI_LENGTH = 2048;
 
     uint256 private _nextListingId = 1;
     mapping(uint256 => Listing) private _listings;
@@ -82,6 +83,9 @@ contract ListingRegistry {
         Pricing calldata pricing,
         Policy calldata policy
     ) external returns (uint256 listingId) {
+        if (bytes(listingURI).length > MAX_URI_LENGTH) {
+            revert("ListingRegistry: URI too long");
+        }
         _requireAuthorized(agentId);
 
         if (pricing.paymentToken == address(0)) {
@@ -136,6 +140,9 @@ contract ListingRegistry {
     }
 
     function updateListing(uint256 listingId, string calldata listingURI, bool active) external {
+        if (bytes(listingURI).length > MAX_URI_LENGTH) {
+            revert("ListingRegistry: URI too long");
+        }
         Listing storage listing = _getListingOrRevert(listingId);
         _requireAuthorized(listing.agentId);
 

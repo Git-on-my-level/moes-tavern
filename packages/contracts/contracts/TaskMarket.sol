@@ -44,7 +44,6 @@ interface IDisputeModule {
 
 contract TaskMarket is ReentrancyGuard, Ownable2Step {
     using SafeERC20 for IERC20;
-    uint64 public constant DISPUTE_MODULE_UPDATE_DELAY = 1 days;
 
     enum TaskStatus {
         OPEN,
@@ -151,6 +150,7 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
     IListingRegistry public immutable listingRegistry;
     IAgentIdentityRegistry public immutable identityRegistry;
     uint64 public constant DISPUTE_MODULE_UPDATE_DELAY = 1 days;
+    uint256 public constant MAX_URI_LENGTH = 2048;
     address public disputeModule;
     address public pendingDisputeModule;
     uint64 public pendingDisputeModuleActivationTime;
@@ -219,6 +219,9 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
     }
 
     function postTask(uint256 listingId, string calldata taskURI, uint32 proposedUnits) external returns (uint256 taskId) {
+        if (bytes(taskURI).length > MAX_URI_LENGTH) {
+            revert("TaskMarket: URI too long");
+        }
         (uint256 agentId, , IListingRegistry.Pricing memory pricing, , bool active) = listingRegistry.getListing(
             listingId
         );
@@ -393,6 +396,9 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
     }
 
     function submitDeliverable(uint256 taskId, string calldata artifactURI, bytes32 artifactHash) external {
+        if (bytes(artifactURI).length > MAX_URI_LENGTH) {
+            revert("TaskMarket: URI too long");
+        }
         Task storage task = _getTaskOrRevert(taskId);
         if (task.status != TaskStatus.ACTIVE) {
             revert("TaskMarket: not active");

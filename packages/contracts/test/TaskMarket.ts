@@ -456,8 +456,15 @@ describe('TaskMarket', function () {
   });
 
   it('resolves an in-flight dispute after dispute module upgrade', async function () {
-    const { owner, buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
-      await deployFixture();
+    const {
+      owner,
+      buyer,
+      agent,
+      listingRegistry,
+      taskMarket,
+      disputeModule,
+      token,
+    } = await deployFixture();
     await createListing(listingRegistry, agent, token.target, {
       quoteRequired: false,
     });
@@ -1150,5 +1157,108 @@ describe('TaskMarket', function () {
 
     const cancelled = await taskMarket.getTask(1);
     expect(cancelled.status).to.equal(6);
+  });
+
+  it('rejects postTask with URI exceeding MAX_URI_LENGTH', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      taskMarket.connect(buyer).postTask(1, longURI, 2),
+    ).to.be.revertedWith('TaskMarket: URI too long');
+  });
+
+  it('rejects submitDeliverable with URI exceeding MAX_URI_LENGTH', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      taskMarket.connect(agent).submitDeliverable(1, longURI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: URI too long');
+  });
+
+  it('rejects openDispute with URI exceeding MAX_URI_LENGTH', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      disputeModule.connect(buyer).openDispute(1, longURI),
+    ).to.be.revertedWith('DisputeModule: URI too long');
+  });
+
+  it('rejects resolveDispute with URI exceeding MAX_URI_LENGTH', async function () {
+    const {
+      buyer,
+      agent,
+      listingRegistry,
+      taskMarket,
+      disputeModule,
+      token,
+      owner,
+    } = await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    await disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-1');
+
+    await disputeModule.connect(owner).setResolver(owner.address, true);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      disputeModule.connect(owner).resolveDispute(1, 0, longURI),
+    ).to.be.revertedWith('DisputeModule: URI too long');
   });
 });

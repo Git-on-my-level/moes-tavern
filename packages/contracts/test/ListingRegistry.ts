@@ -232,6 +232,40 @@ describe('ListingRegistry', function () {
     ).to.be.revertedWith('ListingRegistry: challengeWindow must be positive');
   });
 
+<<<<<<< HEAD
+  it('rejects createListing with URI exceeding MAX_URI_LENGTH', async function () {
+    const { identity, listingRegistry, paymentToken } = await deployFixture();
+
+    await identity.registerAgent('ipfs://agent-1');
+
+    const pricing = getPricing(paymentToken.target);
+    const policy = getPolicy();
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      listingRegistry.createListing(1, longURI, pricing, policy),
+    ).to.be.revertedWith('ListingRegistry: URI too long');
+  });
+
+  it('rejects updateListing with URI exceeding MAX_URI_LENGTH', async function () {
+    const [owner] = await ethers.getSigners();
+    const { identity, listingRegistry, paymentToken } = await deployFixture();
+
+    await identity.registerAgent('ipfs://agent-1');
+
+    const pricing = getPricing(paymentToken.target);
+    const policy = getPolicy();
+
+    await listingRegistry.createListing(1, LISTING_URI, pricing, policy);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      listingRegistry.connect(owner).updateListing(1, longURI, false),
+    ).to.be.revertedWith('ListingRegistry: URI too long');
+  });
+
   it('rejects zero deliveryWindow', async function () {
     const { identity, listingRegistry, paymentToken } = await deployFixture();
 

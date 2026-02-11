@@ -98,6 +98,7 @@ contract DisputeModule is Ownable2Step {
     event ResolverUpdated(address indexed resolver, bool allowed);
 
     ITaskMarket public immutable taskMarket;
+    uint256 public constant MAX_URI_LENGTH = 2048;
     mapping(address => bool) public resolvers;
     mapping(uint256 => DisputeRecord) public disputes;
 
@@ -125,6 +126,9 @@ contract DisputeModule is Ownable2Step {
     }
 
     function openDispute(uint256 taskId, string calldata disputeURI) external {
+        if (bytes(disputeURI).length > MAX_URI_LENGTH) {
+            revert("DisputeModule: URI too long");
+        }
         DisputeRecord storage record = disputes[taskId];
         if (record.opened) {
             revert("DisputeModule: already opened");
@@ -164,6 +168,9 @@ contract DisputeModule is Ownable2Step {
         ITaskMarket.DisputeOutcome outcome,
         string calldata resolutionURI
     ) external onlyResolver {
+        if (bytes(resolutionURI).length > MAX_URI_LENGTH) {
+            revert("DisputeModule: URI too long");
+        }
         DisputeRecord storage record = disputes[taskId];
         (ITaskMarket.TaskStatus status, , address buyer, , ) = taskMarket.getTaskState(taskId);
 
