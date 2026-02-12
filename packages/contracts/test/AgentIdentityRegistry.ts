@@ -71,4 +71,34 @@ describe('AgentIdentityRegistry', function () {
     await registry.connect(operator).setAgentURI(1, 'ipfs://agent-1-approved');
     expect(await registry.getAgentURI(1)).to.equal('ipfs://agent-1-approved');
   });
+
+  it('rejects registerAgent with URI exceeding MAX_URI_LENGTH', async function () {
+    const [owner] = await ethers.getSigners();
+    const AgentIdentityRegistry = await ethers.getContractFactory(
+      'AgentIdentityRegistry',
+    );
+    const registry = await AgentIdentityRegistry.deploy();
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      registry.connect(owner).registerAgent(longURI),
+    ).to.be.revertedWith('AgentIdentityRegistry: URI too long');
+  });
+
+  it('rejects setAgentURI with URI exceeding MAX_URI_LENGTH', async function () {
+    const [owner] = await ethers.getSigners();
+    const AgentIdentityRegistry = await ethers.getContractFactory(
+      'AgentIdentityRegistry',
+    );
+    const registry = await AgentIdentityRegistry.deploy();
+
+    await registry.registerAgent(DEFAULT_URI);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      registry.connect(owner).setAgentURI(1, longURI),
+    ).to.be.revertedWith('AgentIdentityRegistry: URI too long');
+  });
 });

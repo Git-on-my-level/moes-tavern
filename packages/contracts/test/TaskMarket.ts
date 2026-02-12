@@ -22,6 +22,7 @@ const policyTemplate = {
   postDisputeWindowSec: 0,
   deliveryWindowSec: 7200,
   sellerBondBps: 0,
+  deliveryWindowSec: 86400,
 };
 
 describe('TaskMarket', function () {
@@ -453,6 +454,66 @@ describe('TaskMarket', function () {
     await expect(
       disputeModule.connect(other).resolveDispute(1, 0, 'ipfs://resolution-1'),
     ).to.be.revertedWith('DisputeModule: resolver only');
+  });
+
+  it('resolves an in-flight dispute after dispute module upgrade', async function () {
+    const {
+      owner,
+      buyer,
+      agent,
+      listingRegistry,
+      taskMarket,
+      disputeModule,
+      token,
+    } = await deployFixture();
+    await createListing(listingRegistry, agent, token.target, {
+      quoteRequired: false,
+    });
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const quotedTask = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, quotedTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, quotedTask.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    await disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-upgrade');
+    expect((await taskMarket.getTask(1)).status).to.equal(4);
+
+    const DisputeModule = await ethers.getContractFactory('DisputeModule');
+    const disputeModuleV2 = await DisputeModule.deploy(taskMarket.target, []);
+    await disputeModuleV2.connect(owner).setResolver(owner.address, true);
+
+    await taskMarket.connect(owner).setDisputeModule(disputeModuleV2.target);
+    const delay = await taskMarket.DISPUTE_MODULE_UPDATE_DELAY();
+    await time.increase(Number(delay) + 1);
+    await taskMarket.connect(owner).executeDisputeModuleUpdate();
+
+    const buyerBefore = await token.balanceOf(buyer.address);
+    const agentBefore = await token.balanceOf(agent.address);
+
+    await disputeModuleV2
+      .connect(owner)
+      .resolveDispute(1, 1, 'ipfs://resolution-upgrade');
+
+    const buyerAfter = await token.balanceOf(buyer.address);
+    const agentAfter = await token.balanceOf(agent.address);
+    const settledTask = await taskMarket.getTask(1);
+    const disputeRecord = await disputeModuleV2.disputes(1);
+
+    expect(settledTask.status).to.equal(5);
+    expect(disputeRecord.opened).to.equal(true);
+    expect(disputeRecord.buyer).to.equal(buyer.address);
+    expect(buyerAfter - buyerBefore).to.equal(quotedTask.quotedTotalPrice);
+    expect(agentAfter - agentBefore).to.equal(0n);
   });
 
   it('emits correct buyer in DisputeOpened event when opened via TaskMarket', async function () {
@@ -1095,5 +1156,178 @@ describe('TaskMarket', function () {
 
     const cancelled = await taskMarket.getTask(1);
     expect(cancelled.status).to.equal(6);
+  });
+
+  it('rejects postTask with URI exceeding MAX_URI_LENGTH', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      taskMarket.connect(buyer).postTask(1, longURI, 2),
+    ).to.be.revertedWith('TaskMarket: URI too long');
+  });
+
+  it('rejects submitDeliverable with URI exceeding MAX_URI_LENGTH', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      taskMarket.connect(agent).submitDeliverable(1, longURI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: URI too long');
+  });
+
+  it('rejects openDispute with URI exceeding MAX_URI_LENGTH', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, disputeModule, token } =
+      await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      disputeModule.connect(buyer).openDispute(1, longURI),
+    ).to.be.revertedWith('DisputeModule: URI too long');
+  });
+
+  it('rejects resolveDispute with URI exceeding MAX_URI_LENGTH', async function () {
+    const {
+      buyer,
+      agent,
+      listingRegistry,
+      taskMarket,
+      disputeModule,
+      token,
+      owner,
+    } = await deployFixture();
+    await createListing(listingRegistry, agent, token.target);
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 2);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    await taskMarket
+      .connect(agent)
+      .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH);
+
+    await disputeModule.connect(buyer).openDispute(1, 'ipfs://dispute-1');
+
+    await disputeModule.connect(owner).setResolver(owner.address, true);
+
+    const longURI = 'ipfs://' + 'a'.repeat(2100);
+
+    await expect(
+      disputeModule.connect(owner).resolveDispute(1, 0, longURI),
+    ).to.be.revertedWith('DisputeModule: URI too long');
+  });
+
+  it('rejects submission after delivery window expires', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 1);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const activeTask = await taskMarket.getTask(1);
+    expect(activeTask.status).to.equal(2);
+    expect(activeTask.activatedAt).to.be.greaterThan(0);
+
+    await time.increase(Number(policy.deliveryWindowSec) + 1);
+
+    await expect(
+      taskMarket
+        .connect(agent)
+        .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: delivery window expired');
+  });
+
+  it('rejects submission at the exact delivery deadline boundary', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { deliveryWindowSec: 120 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 1);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const activeTask = await taskMarket.getTask(1);
+    const deadline = Number(activeTask.activatedAt) + Number(policy.deliveryWindowSec);
+
+    await time.increaseTo(deadline);
+
+    await expect(
+      taskMarket
+        .connect(agent)
+        .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: delivery window expired');
   });
 });

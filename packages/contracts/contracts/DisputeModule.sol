@@ -48,6 +48,8 @@ interface ITaskMarket {
     function getTask(uint256 taskId) external view returns (Task memory);
     function listingRegistry() external view returns (address);
 
+    function getTaskState(uint256 taskId) external view returns (TaskStatus status, uint256 listingId, address buyer, uint64 submittedAt, uint64 disputedAt);
+
     function markDisputed(uint256 taskId, string calldata disputeURI) external;
 
     function resolveDispute(uint256 taskId, DisputeOutcome outcome, string calldata resolutionURI) external;
@@ -96,6 +98,7 @@ contract DisputeModule is Ownable2Step {
     event ResolverUpdated(address indexed resolver, bool allowed);
 
     ITaskMarket public immutable taskMarket;
+    uint256 public constant MAX_URI_LENGTH = 2048;
     mapping(address => bool) public resolvers;
     mapping(uint256 => DisputeRecord) public disputes;
 
@@ -123,32 +126,41 @@ contract DisputeModule is Ownable2Step {
     }
 
     function openDispute(uint256 taskId, string calldata disputeURI) external {
+        if (bytes(disputeURI).length > MAX_URI_LENGTH) {
+            revert("DisputeModule: URI too long");
+        }
         DisputeRecord storage record = disputes[taskId];
         if (record.opened) {
             revert("DisputeModule: already opened");
         }
-        ITaskMarket.Task memory task = taskMarket.getTask(taskId);
-        if (task.status != ITaskMarket.TaskStatus.SUBMITTED) {
+        ITaskMarket.TaskStatus status;
+        uint256 listingId;
+        address buyer;
+        uint64 submittedAt;
+        (status, listingId, buyer, submittedAt, ) = taskMarket.getTaskState(taskId);
+        if (status != ITaskMarket.TaskStatus.SUBMITTED) {
             revert("DisputeModule: not submitted");
         }
-        if (msg.sender != address(taskMarket) && task.buyer != msg.sender) {
+        if (msg.sender != address(taskMarket) && buyer != msg.sender) {
             revert("DisputeModule: buyer only");
         }
 
-        (, , , IListingRegistry.Policy memory policy, ) = IListingRegistry(taskMarket.listingRegistry()).getListing(task.listingId);
-        uint256 deadline = uint256(task.submittedAt) + uint256(policy.challengeWindowSec);
+        (, , , IListingRegistry.Policy memory policy, ) = IListingRegistry(taskMarket.listingRegistry()).getListing(
+            listingId
+        );
+        uint256 deadline = uint256(submittedAt) + uint256(policy.challengeWindowSec);
         if (block.timestamp >= deadline) {
             revert("DisputeModule: challenge window expired");
         }
 
         record.opened = true;
-        record.buyer = task.buyer;
+        record.buyer = buyer;
         record.disputeURI = disputeURI;
         record.outcome = ITaskMarket.DisputeOutcome.SELLER_WINS;
 
         taskMarket.markDisputed(taskId, disputeURI);
 
-        emit DisputeOpened(taskId, task.buyer, disputeURI);
+        emit DisputeOpened(taskId, buyer, disputeURI);
     }
 
     function resolveDispute(
@@ -156,9 +168,19 @@ contract DisputeModule is Ownable2Step {
         ITaskMarket.DisputeOutcome outcome,
         string calldata resolutionURI
     ) external onlyResolver {
+        if (bytes(resolutionURI).length > MAX_URI_LENGTH) {
+            revert("DisputeModule: URI too long");
+        }
         DisputeRecord storage record = disputes[taskId];
+        (ITaskMarket.TaskStatus status, , address buyer, , ) = taskMarket.getTaskState(taskId);
+
         if (!record.opened) {
-            revert("DisputeModule: not opened");
+            if (status != ITaskMarket.TaskStatus.DISPUTED) {
+                revert("DisputeModule: not opened");
+            }
+            record.opened = true;
+            record.buyer = buyer;
+            record.outcome = ITaskMarket.DisputeOutcome.SELLER_WINS;
         }
         if (record.resolved) {
             revert("DisputeModule: already resolved");
