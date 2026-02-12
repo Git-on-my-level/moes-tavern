@@ -1264,7 +1264,7 @@ describe('TaskMarket', function () {
   it('rejects submission after delivery window expires', async function () {
     const { buyer, agent, listingRegistry, taskMarket, token } =
       await deployFixture();
-    const { pricing, policy } = await createListing(
+    const { policy } = await createListing(
       listingRegistry,
       agent,
       token.target,
@@ -1288,6 +1288,41 @@ describe('TaskMarket', function () {
     expect(activeTask.activatedAt).to.be.greaterThan(0);
 
     await time.increase(Number(policy.deliveryWindowSec) + 1);
+
+    await expect(
+      taskMarket
+        .connect(agent)
+        .submitDeliverable(1, ARTIFACT_URI, ARTIFACT_HASH),
+    ).to.be.revertedWith('TaskMarket: delivery window expired');
+  });
+
+  it('rejects submission at the exact delivery deadline boundary', async function () {
+    const { buyer, agent, listingRegistry, taskMarket, token } =
+      await deployFixture();
+    const { policy } = await createListing(
+      listingRegistry,
+      agent,
+      token.target,
+      { quoteRequired: false },
+      { deliveryWindowSec: 120 },
+    );
+
+    await token.mint(buyer.address, 10_000n);
+
+    await taskMarket.connect(buyer).postTask(1, TASK_URI, 1);
+    await taskMarket.connect(agent).acceptTask(1);
+
+    const task = await taskMarket.getTask(1);
+    await token
+      .connect(buyer)
+      .approve(taskMarket.target, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).fundTask(1, task.quotedTotalPrice);
+    await taskMarket.connect(buyer).acceptQuote(1);
+
+    const activeTask = await taskMarket.getTask(1);
+    const deadline = Number(activeTask.activatedAt) + Number(policy.deliveryWindowSec);
+
+    await time.increaseTo(deadline);
 
     await expect(
       taskMarket

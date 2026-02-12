@@ -411,7 +411,7 @@ contract TaskMarket is ReentrancyGuard, Ownable2Step {
         }
         (, , , IListingRegistry.Policy memory policy, ) = listingRegistry.getListing(task.listingId);
         uint256 deadline = uint256(task.activatedAt) + uint256(policy.deliveryWindowSec);
-        if (block.timestamp > deadline) {
+        if (block.timestamp >= deadline) {
             revert("TaskMarket: delivery window expired");
         }
 
